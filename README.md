@@ -236,7 +236,7 @@ The SQL buffer
 ========================================
 
 The SQL buffer is a normal `vim` buffer from which you can send SQL commands
-to your DBMS and in which you can use the omni completion (<C-x><C-o>) to have
+to your DBMS and in which you can use the omni completion (&lt;C-x&gt;&lt;C-o&gt;) to have
 intellisense autocompletion. 
 
 In order to open a buffer, you have to call the command `SWSqlOpen` or
@@ -306,8 +306,8 @@ is going to be sent to the DBMS.
 take advantage of the auto complete intellisense, you have to execute first
 the `SWSqlAutocomplete` command. Depending on how many tables and views you
 have in your database, it might take even more than one minute. After the
-command is executed, normally you can press <C-x><C-o> in insert mode in a sql
-statement. 
+command is executed, normally you can press &lt;C-x&gt;&lt;C-o&gt; in insert
+mode in a sql statement. 
 
 The plugin will try to determine where you are in the sql and return the
 appropriate options. For example, if you are in the fields part of a `select`
@@ -821,7 +821,7 @@ all the parameters the values defined through the vim variables:
 ## SWSqlAutocomplete
 
 This command enables the intellisense autocomplete for the current sql buffer.
-After this command you can use <C-x><C-o> for autocomplete. 
+After this command you can use &lt;C-x&gt;&lt;C-o&gt; for autocomplete. 
 
 ## SWSqlAutocompleteSetDefault
 
