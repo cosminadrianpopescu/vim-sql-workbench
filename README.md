@@ -95,10 +95,10 @@ GUI, like
 either opening a sql buffer with `SWSqlOpenDirect` and then executing
 `WbStoreProfile`. 
 
-Once you have your profiles created, you can use `SWDbExplore` or `SWSqlOpen`
+Once you have your profiles created, you can use `SWDbExplorer` or `SWSqlOpen`
 with the desired profile as argument and you will connect to the database. 
 
-For example, `:SWDbExplore myProfile` will open a database explorer using the
+For example, `:SWDbExplorer myProfile` will open a database explorer using the
 profile `myProfile`. Or `SWSqlOpen myProfile /tmp/myfile.sql` will open the
 file `/tmp/myfile.sql` as an sql buffer. Any command launched from the buffer
 will be using the `myProfile` profile. 
@@ -514,7 +514,7 @@ also restore the autocomplete list, so you will also have the autocomplete.
 Commands
 ========================================
 
-## SWDbExplore
+## SWDbExplorer
 
 *Parameters*:
 
