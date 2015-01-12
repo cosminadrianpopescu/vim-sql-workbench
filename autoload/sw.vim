@@ -253,12 +253,14 @@ function! sw#sql_split(sql, ...)
     let s = canon[0]
     let matches = canon[1]
     let s = substitute(s, '\V' . delimiter, '#SEPARATOR#', 'g')
-    for _m in matches
-        let i = items(_m)
+    let j = len(matches) - 1
+    while j >= 0
+        let i = items(matches[j])
         let m = '#' . i[0][0] . '#'
         let x = substitute(i[0][1], "\\", "\\\\\\", 'g')
         let s = substitute(s, m, x, 'g')
-    endfor
+        let j = j - 1
+    endwhile
     let s = substitute(s, '#NEWLINE#', "\n", 'g')
     let s = substitute(s, '#ESCAPEDDOUBLEQUOTE#', "\\\\\"", 'g')
     let s = substitute(s, '#ESCAPEDSINGLEQUOTE#', "\\\\'", 'g')

@@ -22,6 +22,18 @@ let s:pattern_identifier = '\v' . s:_pattern_identifier
 let s:pattern_reserved_word = '\v\c<(inner|outer|right|left|join|as|using|where|group|order|and|or|not)>'
 let s:pattern_subquery = '\v#sq([0-9]+)#'
 let s:script_path = expand('<sfile>:p:h') . '/../../'
+let s:pattern_expressions = '\v\c\(([\s\t ]*select)@![^\)]{-}\)'
+
+function! s:eliminate_sql_comments(sql)
+    let sql = sw#get_sql_canonical(a:sql)[0]
+    let sql = substitute(sql, '\v--.{-}#NEWLINE#', '#NEWLINE#', 'g')
+    let sql = substitute(sql, '\v--.{-}$', '', 'g')
+    let sql = substitute(sql, '\v\/\*.{-}\*\/', '', 'g')
+    let sql = substitute(sql, '#NEWLINE#', ' ', 'g')
+
+    return sql
+endfunction
+
 if exists('g:sw_plugin_path')
     " This is for cygwin. If we are under cygwin, the sqlworkbench will be a
     " windows application, and vim will work with linux paths
@@ -43,11 +55,13 @@ endfunction
 
 function! sw#autocomplete#extract_current_sql()
     let sql = sw#sqlwindow#extract_current_sql(1)
+    let _sql = s:eliminate_sql_comments(sql)
+    let _sql = substitute(_sql, s:pattern_expressions, '#values#', 'g')
     " Check to see that we are not in a subquery
     let pattern = '\v\c(\([ \t\s]*select[^\(]*#cursor#).*\)'
-    if sql =~ pattern
+    if _sql =~ pattern
         " If we are in a subquery, search where it begins.
-        let l = matchlist(sql, pattern, 'g')
+        let l = matchlist(sql, '\v\c(\([ \s\t]*select([^s]|s[^e]|se[^l]|sel[^e]|sele[^c]|selec[^t]|select[^\s \t])*#cursor#)', 'g')
         if (len(l) >= 1)
             " Get the start and end of the subquery
             let start = sw#index_of(sql, l[1])
@@ -265,6 +279,7 @@ function! sw#autocomplete#perform(findstart, base)
         elseif b:autocomplete_type == 'select' || b:autocomplete_type == 'update'
             " If a select, first get its tables
             let tables = s:get_tables(sql, [])
+            echomsg string(tables)
             " If we returned an empty string, then no autocomplete
             if string(tables) == ""
                 return []
@@ -414,7 +429,7 @@ endfunction
 
 function! s:extract_subqueries(sql)
     let pattern = '\v\c(\([ \s\t]*select[^\(\)]+\))'
-    let s = substitute(a:sql, '\v\c\(([\s\t ]*select)@![^\)]{-}\)', '#values#', 'g')
+    let s = substitute(a:sql, s:pattern_expressions, '#values#', 'g')
     let matches = []
     let n = 0
     let m = matchstr(s, pattern, '')
@@ -441,11 +456,7 @@ function! s:get_fields_part(sql)
 endfunction
 
 function! s:get_tables_part(sql)
-    let sql = sw#get_sql_canonical(a:sql)[0]
-    let sql = substitute(sql, '\v--.{-}#NEWLINE#', '#NEWLINE#', 'g')
-    let sql = substitute(sql, '\v--.{-}$', '', 'g')
-    let sql = substitute(sql, '\v\/\*.{-}\*\/', '', 'g')
-    let sql = substitute(sql, '#NEWLINE#', ' ', 'g')
+    let sql = s:eliminate_sql_comments(a:sql)
     let _subqueries = s:extract_subqueries(sql)
     let sql = _subqueries[0]
     let subqueries = _subqueries[1]
@@ -486,11 +497,12 @@ function! s:canonize_from(from)
 endfunction
 
 function! s:get_subquery_fields(sql, subqueries)
+    let sql = substitute(a:sql, '\V#values#', '()', 'g')
     " If we have a subquery, we just extract the fields out of it. We don't
     " care about tables and other stuff. It will probably be identified by an
     " alias, and we want to return alias.fields
     " Split the fields part by the comma
-    let fields = split(s:get_fields_part(a:sql), ',')
+    let fields = split(s:get_fields_part(sql), ',')
     let result = []
     for field in fields
         " First we trim the field
@@ -511,7 +523,7 @@ function! s:get_subquery_fields(sql, subqueries)
             " get_tables_part function to consider the query as a select
             " query, and not update query
             call sw#session#set_buffer_variable('subquery', 1)
-            let _tmp = s:get_tables(a:sql, a:subqueries)
+            let _tmp = s:get_tables(sql, a:subqueries)
             for row in _tmp
                 if (has_key(row, 'fields'))
                     for f in row['fields']
@@ -531,7 +543,7 @@ function! s:get_subquery_fields(sql, subqueries)
                 endfor
             else
                 " Otherwise, get the from part of this subquery
-                let _r = s:get_tables_part(a:sql)
+                let _r = s:get_tables_part(sql)
                 let from = _r[0]
                 let subqueries = _r[1] + a:subqueries
                 let from = s:canonize_from(from)

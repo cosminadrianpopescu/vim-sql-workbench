@@ -17,9 +17,9 @@
 "
 "============================================================================"
 
-if exists('g:loaded_vim_sql_workbench') || v:version < 700
-  finish
-endif
+"if exists('g:loaded_vim_sql_workbench') || v:version < 700
+"  finish
+"endif
 
 let g:loaded_vim_sql_workbench = 1
 
