@@ -17,6 +17,7 @@ You can connect to any DBMS directly from VIM.
   `sqldeleteinsert`, `xml`, `ods`, `html`, `json`
 * search in object source
 * search in table or views data
+* asynchronous (you can execute any command asynchronous)
 * fully customizable
 
 CONTENTS:
@@ -28,10 +29,11 @@ CONTENTS:
 5. Searching
 6. Exporting
 7. Sessions
-8. Commands
-9. Settings
-10. Screen shots
-11. Missing features
+8. Asynchronous
+9. Commands
+19. Settings
+11. Screen shots
+12. Missing features
 
 Requirements
 ========================================
@@ -511,6 +513,52 @@ that executing statements against the DBMS will produce vim errors. Before
 executing any statement, you have to call the `SWSqlBufferRestore`. This will
 also restore the autocomplete list, so you will also have the autocomplete. 
 
+Asynchronous
+========================================
+
+By default, VIM SQL workbench works in synchronous mode. This means that you
+launch a command, then you will see on the screen the command being executed
+and you have to wait for it to finish to execute another one. 
+
+If you set the variable `g:sw_asynchronious` to 1, then VIM SQL Workbench will
+switch to work in asynchronous mode. This means that once you launch a
+command, the control is returned back immediately, and when the command is
+finished, you will see the output. The advantages of this approach are
+evident: you can launch more than one command at the same time from different
+SQL buffers, you can continue working if the command takes too much time etc.
+For example, when you want to activate the intellisense. This can take more
+than one minute. You can continue working in all this time. 
+
+In order to use the asynchronous mode on Windows, you have to have the [VIM
+Dispatch](https://github.com/tpope/vim-dispatch) plugin installed. This is
+because in Windows I cannot launch a command as daemon. 
+
+Another requirement to run VIM in asynchronous mode is to have the server
+option installed and activated (see `:help client-server`). This is the way in
+which VIM SQL Workbench will know that a command is finished. 
+
+If VIM is not in your `PATH` variable, or you are using other executable (like
+`gvim` or `vim.exe` or `gvim.exe` on Windows), you have to set the
+`g:sw_vim_exe` variable in order to use the asynchronous mode. The default
+value is `vim`. This should work on most `GNU/Linux` distributions if you are
+using vim in console mode. If you are using `gvim` or `macvim`, just set the
+the variable to whatever you are using. On Windows, you will probably have to
+set the variable with full path. 
+
+If the command takes to much and you want to launch another command from the
+same buffer, by default you will have an error message telling you that
+another command is in progress. You can use the `SWKillCurrentCommand`
+command. This is mapped by default to &lt;C-c&gt;. You can change the mapping
+or you can use it directly in command mode. 
+
+Please note that killing a command does not mean that the command will not be
+sent to the DBMS. This only means that once it's finished, vim will simply
+ignore its output. This is not a way to stop a wrongly sent `update`
+statement. The statement will get execute anyway.
+
+If any of the requirements is not met, you will not receive any error message.
+The plugin will silently switch to synchronous mode and work without issues. 
+
 Commands
 ========================================
 
@@ -842,6 +890,10 @@ This command will restore the properties of the sql buffer following a vim
 session restore. This includes the autocomplete intellisense of the buffer, if
 this was active when `mksession` was executed. 
 
+## SWKillCurrentCommand
+
+This command will kill the current command being executed in asynchronous mode. 
+
 Settings
 ========================================
 
@@ -922,6 +974,10 @@ and
 * `g:sw_exe`: the location of the `SQL Workbench` executable; default value:
   "sqlwbconsole.sh"
 * `g:sw_tmp`: the location of your temporary folder; default value: "/tmp"
+* `g:sw_asynchronious`: by default, the commands are executed synchronous; if
+  you set this to 1, then the commands will be executed asynchronous 
+* `g:sw_vim_exe`: the default VIM executable location; this is used in
+  conjunction with the asynchronous mode; default value: `vim`
 
 Screen shots
 ========================================

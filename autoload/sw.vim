@@ -21,6 +21,150 @@ if !exists('g:Sw_unique_id')
     let g:Sw_unique_id = 0
 endif
 
+let s:wake_vim_cmd = ''
+let g:sw_async_ended = []
+
+if exists('v:servername') && exists('g:sw_vim_exe')
+	if v:servername != ''
+		let s:wake_vim_cmd = g:sw_vim_exe . ' --servername ' . v:servername
+	endif
+endif
+
+function! sw#find_buffer_by_unique_id(uid)
+    for k in keys(g:sw_session)
+        if has_key(g:sw_session[k], 'unique_id')
+            if g:sw_session[k].unique_id == a:uid
+                return k
+            endif
+        endif
+    endfor
+
+    return ''
+endfunction
+
+function! s:get_buff_unique_id()
+    if exists('b:unique_id')
+        return b:unique_id
+    endif
+
+    if exists('b:r_unique_id')
+        return b:r_unique_id
+    endif
+
+    return -1
+endfunction
+
+function! sw#is_async()
+	if g:sw_asynchronious
+		if exists('v:servername')
+			if v:servername != ''
+				return 1
+			endif
+		endif
+	endif
+
+	return 0
+endfunction
+
+function! s:get_wake_vim_cmd()
+	return s:wake_vim_cmd . ' --remote-expr "sw#got_async_result(' . s:get_buff_unique_id() . ')"'
+endfunction
+
+function! sw#async_end()
+    let idx = index(g:sw_async_ended, s:get_buff_unique_id())
+    if idx != -1
+        unlet g:sw_async_ended[idx]
+    endif
+    if exists('b:async_on_progress')
+        unlet b:async_on_progress
+        if exists('b:on_async_result')
+            let func = b:on_async_result
+            execute "call " . func . "()"
+        endif
+
+        call delete(g:sw_tmp . '/' . s:input_file())
+        call delete(g:sw_tmp . '/' . s:output_file())
+        call delete(g:sw_tmp . '/' . s:async_input_file())
+    endif
+endfunction
+
+function! sw#reset_current_command()
+    let idx = index(g:sw_async_ended, s:get_buff_unique_id())
+    if idx != -1
+        unlet g:sw_async_ended[idx]
+    endif
+    if exists('b:async_on_progress')
+        unlet b:async_on_progress
+    endif
+
+    call delete(g:sw_tmp . '/' . s:input_file())
+    call delete(g:sw_tmp . '/' . s:output_file())
+    call delete(g:sw_tmp . '/' . s:async_input_file())
+endfunction
+
+function! sw#kill_current_command()
+    let idx = index(g:sw_async_ended, s:get_buff_unique_id())
+    if idx != -1
+        unlet g:sw_async_ended[idx]
+    endif
+    if exists('b:async_on_progress')
+        unlet b:async_on_progress
+    endif
+    if exists('b:on_async_result')
+        unlet b:on_async_result
+    endif
+    if exists('b:on_async_kill')
+        let func = b:on_async_kill
+        call sw#session#unset_buffer_variable('on_async_kill')
+        execute "call " . func . "()"
+    endif
+
+    call delete(g:sw_tmp . '/' . s:input_file())
+    call delete(g:sw_tmp . '/' . s:output_file())
+    call delete(g:sw_tmp . '/' . s:async_input_file())
+endfunction
+
+function! sw#check_async_result()
+    let uid = s:get_buff_unique_id()
+    if uid != -1
+        if index(g:sw_async_ended, uid) != -1
+            call sw#async_end()
+        endif
+    endif
+endfunction
+
+function! sw#got_async_result(unique_id)
+    call add(g:sw_async_ended, a:unique_id)
+    if s:get_buff_unique_id() == a:unique_id
+        if mode() == 'i' || mode() == 'R'
+            let m = mode()
+            if m == 'i'
+                let m = 'a'
+            endif
+            call sw#async_end()
+            execute "normal " . m
+        elseif mode() == 'V' || mode() == 'v' || mode() == 's'
+            let m = mode()
+            normal 
+            call sw#async_end()
+            normal gv
+            if m == 's'
+                normal 
+            endif
+        else
+            call sw#async_end()
+        endif
+    endif
+    redraw!
+    return ''
+endfunction
+
+function! s:on_windows()
+	if exists('v:progname')
+		return v:progname =~ '\v\.exe$'
+	endif
+endfunction
+
 " Executes a shell command{{{1
 function! sw#do_shell(command)
     let prefix = ''
@@ -28,7 +172,38 @@ function! sw#do_shell(command)
         let prefix = 'silent'
     endif
 
-    execute prefix . ' !clear && echo Executting && cat ' . g:sw_tmp . '/' . s:input_file() . ' && ' . a:command
+	if sw#is_async()
+		let async = 0
+		if exists('v:progname')
+			let file = g:sw_tmp . '/' . s:async_input_file()
+			let commands = [a:command, s:get_wake_vim_cmd()]
+			if s:on_windows()
+				if exists('g:loaded_dispatch')
+					if g:loaded_dispatch
+						call writefile(commands, file)
+						execute "Start! " . file
+						let async = 1
+					endif
+				endif
+			else
+                let shell = &shell 
+				call writefile(commands, file)
+				execute prefix . ' !' . shell . ' ' . file . ' &'
+				let async = 1
+			endif
+		endif
+
+		if async
+            let b:async_on_progress = 1
+			return 1
+		endif
+	endif
+	if s:on_windows()
+		execute prefix . ' !' . a:command
+	else
+		execute prefix . ' !clear && echo Executting && cat ' . g:sw_tmp . '/' . s:input_file() . ' && ' . a:command
+	endif
+	return 0
 endfunction
 
 function! s:get_profile(profile)
@@ -42,15 +217,57 @@ function! s:get_profile(profile)
 endfunction
 
 function! s:input_file()
-    return 'sw-sql-' . g:sw_instance_id
+    return 'sw-sql-' . g:sw_instance_id . (sw#is_async() ? '-' . s:get_buff_unique_id() : '')
 endfunction
 
 function! s:output_file()
-    return 'sw-result-' . g:sw_instance_id
+    return 'sw-result-' . g:sw_instance_id . (sw#is_async() ? '-' . s:get_buff_unique_id() : '')
+endfunction
+
+function! s:async_input_file()
+	return 'sw-async-' . g:sw_instance_id . (sw#is_async() ? '-' . s:get_buff_unique_id() : '') . '.bat'
+endfunction
+
+function! sw#get_sql_result(touch_result)
+	let result = readfile(g:sw_tmp . '/' . s:output_file())
+	let touch_result = a:touch_result
+
+	if (touch_result && len(result) > 0)
+		if result[len(result) - 1] =~ '\v\c^\([0-9]+ row[s]?\)$'
+			let result[0] = result[len(result) - 1]
+			unlet result[len(result) - 1]
+		else
+			unlet result[0]
+		endif
+	endif
+
+	""let i = 0
+	""for row in result
+	""    if row == a:command
+	""        unlet result[i]
+	""        break 
+	""    endif
+	""    let i = i + 1
+	""endfor
+
+	if (g:sw_show_command)
+		call add(result, "")
+		call add(result, '-----------------------------------------------------------------------------')
+		call add(result, ' Command executed: ' . a:command)
+	endif
+
+	return result
 endfunction
 
 " Executes an sql command{{{1
 function! sw#execute_sql(profile, command, ...)
+    if sw#is_async()
+        if exists('b:async_on_progress')
+            if b:async_on_progress
+                throw 'There is a command in progress for this buffer. Please wait for it to finish.'
+            endif
+        endif
+    endif
     execute "silent !echo '' >" . g:sw_tmp . '/' . s:output_file()
     let delimiter = ''
     if (exists('b:delimiter'))
@@ -96,40 +313,19 @@ function! sw#execute_sql(profile, command, ...)
     let g:sw_last_command = c
     let lines = split(a:command, "\n")
     call writefile(lines, g:sw_tmp . '/' . s:input_file())
-    call sw#do_shell(c)
-    redraw!
-    let result = readfile(g:sw_tmp . '/' . s:output_file())
-    let touch_result = 1
+	" If do_shell returns 0, it means that the command was not executed
+	" asynchroniously
+	if (!sw#do_shell(c))
+		redraw!
+		let touch_result = 1
+		if a:0
+			let touch_result = a:1
+		endif
+		return sw#get_sql_result(touch_result)
+	endif
 
-    if a:0
-        let touch_result = a:1
-    endif
-
-    if (touch_result && len(result) > 0)
-        if result[len(result) - 1] =~ '\v\c^\([0-9]+ row[s]?\)$'
-            let result[0] = result[len(result) - 1]
-            unlet result[len(result) - 1]
-        else
-            unlet result[0]
-        endif
-    endif
-
-    ""let i = 0
-    ""for row in result
-    ""    if row == a:command
-    ""        unlet result[i]
-    ""        break 
-    ""    endif
-    ""    let i = i + 1
-    ""endfor
-
-    if (g:sw_show_command)
-        call add(result, "")
-        call add(result, '-----------------------------------------------------------------------------')
-        call add(result, ' Command executed: ' . a:command)
-    endif
-
-    return result
+	redraw!
+	return []
 endfunction
 
 " Exports as ods{{{1
@@ -140,7 +336,6 @@ function! sw#export_ods(profile, command)
         let location = input('Please select a destination file: ', '', 'file')
         if (location != '')
             let queries = sw#sql_split(a:command)
-            echomsg string(queries)
             call writefile(['WbExport -type=' . format . ' -file=' . location . ';', queries[len(queries) - 1]], g:sw_tmp . '/' . s:input_file())
             let c = g:sw_exe . s:get_profile(a:profile) . ' -displayResult=true -script=' . g:sw_tmp . '/' . s:input_file()
             call sw#do_shell(c)
@@ -311,9 +506,13 @@ endfunction
 
 " Goes to a window identified by a buffer name{{{1
 function! sw#goto_window(name)
+    let crt = bufname('%')
     if bufwinnr(a:name) != -1
-        while bufname('%') != a:name
+        while bufname('%') != a:name && sw#session#buffer_name() != a:name
             wincmd w
+            if bufname('%') == crt
+                return
+            endif
         endwhile
     endif
 endfunction

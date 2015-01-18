@@ -39,6 +39,16 @@ let s:obj_parameters = [{'name': 'searchValues', 'prompt': 'Search terms: ', 'ty
 
 let s:data_parameters = [{'name': 'searchValue', 'prompt': 'Search terms: ', 'type': 'string', 'escape': 1, 'highlight': 1}, {'name': 'ignoreCase', 'prompt': 'Ignore case? [Y/N] ', 'type': 'boolean', 'default': g:sw_search_default_ignore_case, 'highlight_case': 1}, {'name': 'compareType', 'prompt': 'Possible values: equals | matches | startsWith | isNull. Compare type: ', 'type': 'select', 'default': g:sw_search_default_compare_types, 'options': ['equals', 'matches', 'startsWith', 'isNull']}, {'name': 'tables', 'prompt': 'Tables list: ', 'type': 'string', 'default': g:sw_search_default_tables}, {'name': 'types', 'prompt': 'Object types: ', 'type': 'string', 'default': g:sw_search_default_data_types, 'escape': 1}, {'name': 'excludeTables', 'prompt': 'Tables to exclude: ', 'type': 'string', 'continue_on_null': 1}, {'name': 'excludeLobs', 'prompt': 'Do you want to exclude lobs? [Y/N] ', 'type': 'boolean', 'default': g:sw_search_default_exclude_lobs}]
 
+function! s:get_resultset_name()
+    let uid = ''
+    if exists('b:unique_id')
+        let uid = b:unique_id
+    elseif exists('b:r_unique_id')
+        let uid = b:r_unique_id
+    endif
+    return "__SQLResult__-" . b:profile . '__' . uid
+endfunction
+
 function! s:input_boolean(message, default_value)
     let result = input(a:message, a:default_value)
     if result == ''
@@ -80,16 +90,8 @@ function! s:input_select(message, default_value, options)
     return result
 endfunction
 
-function! sw#search#do(command, columns)
-	call sw#session#init_section()
-    if exists('b:feedback')
-        let feedback = b:feedback
-        call sw#session#unset_buffer_variable('feedback')
-    endif
-    let result = sw#execute_sql(b:profile, a:command, 0)
-    if exists('feedback')
-        call sw#session#set_buffer_variable('feedback', feedback)
-    endif
+function! s:process_search_result(result, columns)
+    let result = a:result
     if a:columns != ''
         let _c = split(a:columns, ',')
         let columns = []
@@ -134,8 +136,11 @@ function! sw#search#do(command, columns)
 
 		let result = _r
     endif
+    let __name = ''
     if exists('b:max_results')
-        let name = "__SQLResult__-" . b:profile . '__' . b:unique_id
+        let __name = bufname('%')
+        let uid = b:unique_id
+        let name = s:get_resultset_name()
         if (!bufexists(name))
             let profile = b:profile
 			let s_below = &splitbelow
@@ -147,6 +152,7 @@ function! sw#search#do(command, columns)
 				set nosplitbelow
 			endif
 			call sw#session#set_buffer_variable('state', 'resultsets')
+            call sw#session#set_buffer_variable('r_unique_id', uid)
         endif
     endif
     let highlight = ''
@@ -160,7 +166,12 @@ function! sw#search#do(command, columns)
 
         let highlight = '\V' . highlight
     endif
-    wincmd b
+    if bufwinnr('__SQL__-' . b:profile) != -1
+        call sw#goto_window('__SQL__-' . b:profile)
+    else
+        call sw#goto_window(s:get_resultset_name())
+        let __name = sw#find_buffer_by_unique_id(b:r_unique_id)
+    endif
     if exists('b:match_id')
         try
             call matchdelete(b:match_id)
@@ -187,6 +198,89 @@ function! sw#search#do(command, columns)
         call sw#session#set_buffer_variable('match_id', matchadd('Search', highlight))
     endif
     setlocal nomodifiable
+    if __name != ''
+        call sw#goto_window(__name)
+    endif
+endfunction
+
+function! s:set_async_variables(columns)
+    let b:on_async_result = 'sw#search#on_async_result'
+    let b:on_async_kill = 'sw#search#on_async_kill'
+    let b:__columns = a:columns
+endfunction
+
+function! s:asynchronious(columns, set)
+    let name = sw#session#buffer_name()
+    if name == s:get_resultset_name()
+        let a_name = sw#find_buffer_by_unique_id(b:r_unique_id)
+    else
+        let a_name = s:get_resultset_name()
+    endif
+    if a:set
+        call s:set_async_variables(a:columns)
+    else
+        call s:unset_async_variables()
+    endif
+    call sw#goto_window(a_name)
+    if a:set
+        call s:set_async_variables(a:columns)
+    else
+        call s:unset_async_variables()
+    endif
+    call sw#goto_window(name)
+endfunction
+
+function! s:unset_async_variables()
+    if exists('b:on_async_result')
+        unlet b:on_async_result
+    endif
+    if exists('b:on_async_kill')
+        unlet b:on_async_kill
+    endif
+    if exists('b:__columns')
+        unlet b:__columns
+    endif
+endfunction
+
+function! sw#search#on_async_result()
+    let result = sw#get_sql_result(0)
+    let columns = g:sw_search_default_result_columns
+    if exists('b:__columns')
+        let columns = b:__columns
+    endif
+    call s:process_search_result(result, columns)
+    call s:asynchronious('', 0)
+endfunction
+
+function! sw#search#on_async_kill()
+    let name = s:get_resultset_name()
+    if bufexists(name)
+        call sw#goto_window(name)
+        setlocal modifiable
+        normal G
+        put ='Interrupted'
+        setlocal nomodifiable
+    endif
+    call s:asynchronious('', 0)
+endfunction
+
+function! sw#search#do(command, columns)
+	call sw#session#init_section()
+    if exists('b:feedback')
+        let feedback = b:feedback
+        call sw#session#unset_buffer_variable('feedback')
+    endif
+    call s:asynchronious(a:columns, 1)
+    let result = sw#execute_sql(b:profile, a:command, 0)
+    if exists('feedback')
+        call sw#session#set_buffer_variable('feedback', feedback)
+    endif
+    if len(result) > 0
+        call s:process_search_result(result, a:columns)
+        call s:asynchronious('', 0)
+    else
+        call s:process_search_result(['Searching...'], '')
+    endif
 endfunction
 
 function! sw#search#data_defaults(value)

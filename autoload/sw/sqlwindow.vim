@@ -17,13 +17,22 @@
 "
 "============================================================================"
 
-let s:pattern_resultset_start = '\v^([\-]+\+)+([\-]*)$'
+let s:pattern_resultset_start = '\v^([\-]+\+?)+([\-]*)$'
 let s:pattern_empty_line = '\v^[\r \s\t]*$'
 let s:script_path = expand('<sfile>:p:h') . '/../../'
 
 function! s:check_sql_buffer()
     if (!exists('b:profile'))
         throw "The current buffer is not an SQL Workbench buffer. Open it using the SWOpenSQL command."
+    endif
+endfunction
+
+function! sw#sqlwindow#goto_statement_buffer()
+    if (exists('b:r_unique_id'))
+        let b = sw#find_buffer_by_unique_id(b:r_unique_id)
+        if b != ''
+            call sw#goto_window(b)
+        endif
     endif
 endfunction
 
@@ -65,6 +74,7 @@ function! s:do_open_buffer()
     call sw#session#set_buffer_variable('feedback', g:sw_feedback)
     call sw#session#set_buffer_variable('unique_id', sw#generate_unique_id())
     call sw#session#autocommand('BufEnter', 'sw#sqlwindow#set_statement_shortcuts()')
+    call sw#session#autocommand('BufEnter', 'sw#check_async_result()')
     call sw#sqlwindow#set_statement_shortcuts()
     ""normal gg
     ""put ='-- Current profile: ' . b:profile
@@ -194,7 +204,7 @@ function! sw#sqlwindow#toggle_messages()
     if b:state != 'resultsets' && b:state != 'messages'
         return 
     endif
-    wincmd b
+    call sw#goto_window(sw#sqlwindow#get_resultset_name())
     if b:state == 'resultsets'
         call sw#session#set_buffer_variable('position', getpos('.'))
     endif
@@ -390,29 +400,18 @@ function! s:display_resultsets()
     call sw#session#set_buffer_variable('state', 'resultsets')
 endfunction
 
-function! sw#sqlwindow#execute_sql(sql)
-    let w:auto_added1 = "-- auto\n"
-    let w:auto_added2 = "-- end auto\n"
-
-    call s:check_sql_buffer()
-    let _sql = a:sql
-    if (b:display_result_as != 'tab')
-        let _sql = w:auto_added1 . 'WbDisplay ' . b:display_result_as . "\n" . b:delimiter . "\n" . w:auto_added2 . _sql
-    endif
-    if (b:max_results != 0)
-        let _sql = w:auto_added1 . 'set maxrows = ' . b:max_results . "\n" . b:delimiter . "\n" . w:auto_added2 . _sql
-    endif
-    let result = sw#execute_sql(b:profile, _sql, 0)
-
+function! s:process_result(result)
+    let result = a:result
     let uid = b:unique_id
     let name = "__SQLResult__-" . b:profile . '__' . b:unique_id
     let profile = b:profile
 
     if (bufexists(name))
-        wincmd b
+        call sw#goto_window(name)
         setlocal modifiable
         normal ggdG
     else
+        let uid = b:unique_id
         let s_below = &splitbelow
         set splitbelow
         execute "split " . name
@@ -481,7 +480,48 @@ function! sw#sqlwindow#execute_sql(sql)
 
     normal ggdd
     setlocal nomodifiable
-    wincmd t
+    let b = sw#find_buffer_by_unique_id(b:r_unique_id)
+    if b != ''
+        call sw#goto_window(b)
+    endif
+endfunction
+
+function! sw#sqlwindow#on_async_result()
+    let result = sw#get_sql_result(0)
+    call s:process_result(result)
+    ""call feedkeys(':echo ')
+endfunction
+
+function! sw#sqlwindow#on_async_kill()
+    let result = ['Interrupted asynchronious command...']
+    call s:process_result(result)
+endfunction
+
+function! sw#sqlwindow#execute_sql(sql)
+    let w:auto_added1 = "-- auto\n"
+    let w:auto_added2 = "-- end auto\n"
+
+    call s:check_sql_buffer()
+    let _sql = a:sql
+    if (b:display_result_as != 'tab')
+        let _sql = w:auto_added1 . 'WbDisplay ' . b:display_result_as . "\n" . b:delimiter . "\n" . w:auto_added2 . _sql
+    endif
+    if (b:max_results != 0)
+        let _sql = w:auto_added1 . 'set maxrows = ' . b:max_results . "\n" . b:delimiter . "\n" . w:auto_added2 . _sql
+    endif
+    let b:on_async_result = 'sw#sqlwindow#on_async_result'
+    let b:on_async_kill = 'sw#sqlwindow#on_async_kill'
+    let result = sw#execute_sql(b:profile, _sql, 0)
+
+    if len(result) != 0
+        unlet b:on_async_result
+        unlet b:on_async_kill
+        call s:process_result(result)
+    else
+        if sw#is_async()
+            call s:process_result(['Processing a command. Please wait...'])
+        endif
+    endif
 endfunction
 
 function! sw#sqlwindow#get_object_info()
@@ -491,11 +531,11 @@ function! sw#sqlwindow#get_object_info()
 
     let obj = expand('<cword>')
     let sql = "desc " . obj
-    wincmd t
+    call sw#sqlwindow#goto_statement_buffer()
     call sw#sqlwindow#execute_sql(sql)
 endfunction
 
-function! s:get_resultset_name()
+function! sw#sqlwindow#get_resultset_name()
     if exists('b:profile') && exists('b:unique_id')
         return '__SQLResult__-' . b:profile . '__' . b:unique_id
     endif
@@ -510,7 +550,7 @@ function! sw#sqlwindow#close_all_result_sets()
         let name = bufname('%')
         let rs_name = ''
         if exists('b:profile')
-            let rs_name = s:get_resultset_name()
+            let rs_name = sw#sqlwindow#get_resultset_name()
         endif
         for k in keys(g:sw_session)
             if k =~ '\v^__SQLResult__' && k != rs_name
@@ -555,7 +595,7 @@ function! sw#sqlwindow#check_hidden_results()
                     endif
                     normal ggdd
                     setlocal nomodifiable
-                    wincmd t
+                    call sw#sqlwindow#goto_statement_buffer()
                 endif
             endif
         endif
@@ -569,6 +609,6 @@ function! sw#sqlwindow#get_object_source()
 
     let obj = expand('<cword>')
     let sql = 'WbGrepSource -searchValues="' . obj . '" -objects=' . obj . ' -types=* -useRegex=true;'
-    wincmd t
+    call sw#sqlwindow#goto_statement_buffer()
     call sw#sqlwindow#execute_sql(sql)
 endfunction

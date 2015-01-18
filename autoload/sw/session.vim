@@ -33,11 +33,19 @@ if !exists('g:sw_autocommands')
     let g:sw_autocommands = {}
 endif
 
+function! sw#session#buffer_name()
+	let name = bufname('%')
+	if name =~ '\v^__'
+		return name
+	endif
+	return fnamemodify(name, ':p')
+endfunction
+
 function! s:key_name(...)
     if a:0
         let name = a:1
     else
-        let name = bufname('%')
+		return sw#session#buffer_name()
     endif
     if name =~ '\v^__'
         return name
@@ -166,7 +174,7 @@ endfunction
 
 function! sw#session#restore_sqlbuffer()
     call sw#session#check()
-    wincmd b
+    call sw#goto_window(sw#sqlwindow#get_resultset_name())
     call sw#session#check()
-    wincmd t
+    call sw#sqlwindow#goto_statement_buffer()
 endfunction

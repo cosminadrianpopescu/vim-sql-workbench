@@ -8,4 +8,5 @@ imap <buffer> <C-@> <Esc>:SWSqlExecuteCurrent<cr>
 nmap <buffer> <M-i> :SWSqlObjectInfo<cr>
 nmap <buffer> <M-s> :SWSqlObjectSource<cr>
 nmap <buffer> <M-m> <C-w>b:SWSqlToggleMessages<cr><C-w>t
+nmap <buffer> <C-c> :SWKillCurrentCommand<cr>
 
