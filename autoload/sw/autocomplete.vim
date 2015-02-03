@@ -111,7 +111,7 @@ function! s:execute_file(f)
 	endfor
 endfunction
 
-function s:set_default()
+function! s:set_default()
     let g:sw_autocomplete_default_tables = b:autocomplete_tables
     let g:sw_autocomplete_default_procs = b:autocomplete_procs
     let g:Str_sw_autocomplete_default_tables = string(g:sw_autocomplete_default_tables)

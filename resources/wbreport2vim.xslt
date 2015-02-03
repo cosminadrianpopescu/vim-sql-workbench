@@ -12,15 +12,21 @@
 />
 
 <xsl:template match="/">
-let g:tables = {<xsl:call-template name="table-definitions"/><xsl:call-template name="view-definitions"/>}
+let g:tables = {}
+<xsl:call-template name="table-definitions"/>
+<xsl:call-template name="view-definitions"/>
 </xsl:template>
 
 <xsl:template name="table-definitions">
-    <xsl:for-each select="/schema-report/table-def">'T#<xsl:value-of select="@name"/>': [<xsl:for-each select="column-def">'<xsl:value-of select="@name"/>',</xsl:for-each>],</xsl:for-each>
+    <xsl:for-each select="/schema-report/table-def">
+        let g:tables['T#<xsl:value-of select="@name"/>'] = [<xsl:for-each select="column-def">'<xsl:value-of select="@name"/>',</xsl:for-each>]
+    </xsl:for-each>
 </xsl:template>
 
 <xsl:template name="view-definitions">
-    <xsl:for-each select="/schema-report/view-def">'V#<xsl:value-of select="@name"/>': [<xsl:for-each select="column-def">'<xsl:value-of select="@name"/>',</xsl:for-each>],</xsl:for-each>
+    <xsl:for-each select="/schema-report/view-def">
+        let g:tables['V#<xsl:value-of select="@name"/>'] = [<xsl:for-each select="column-def">'<xsl:value-of select="@name"/>',</xsl:for-each>]
+    </xsl:for-each>
 </xsl:template>
 
 
