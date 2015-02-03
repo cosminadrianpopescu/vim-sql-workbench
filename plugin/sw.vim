@@ -142,9 +142,14 @@ endif
 
 if (!exists('g:sw_asynchronious'))
 	let g:sw_asynchronious = 0
-	if !exists('g:vim_exe')
-		let g:sw_vim_exe = 'vim'
-	endif
+endif
+
+if !exists('g:vim_exe')
+    let g:sw_vim_exe = 'vim'
+endif
+
+if !exists('g:sw_tab_switches_between_bottom_panels')
+	let g:sw_tab_switches_between_bottom_panels = 1
 endif
 
 "if !exists('g:sw_overwrite_current_command')

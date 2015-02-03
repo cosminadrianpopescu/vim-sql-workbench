@@ -77,6 +77,20 @@ function! s:set_special_buffer(profile, connection)
     endif
 
 	call s:iterate('s:add_shortcut')
+
+	if g:sw_tab_switches_between_bottom_panels
+		nmap <buffer> <tab> :call sw#dbexplorer#switch_bottom_panels()<cr>
+	endif
+endfunction
+
+function! sw#dbexplorer#switch_bottom_panels()
+	if exists('b:profile')
+		if bufname('%') == '__DBExplorer__-' . b:profile
+			call sw#goto_window('__SQL__-' . b:profile)
+		else
+			call sw#goto_window('__DBExplorer__-' . b:profile)
+		endif
+	endif
 endfunction
 
 function! s:get_panels()

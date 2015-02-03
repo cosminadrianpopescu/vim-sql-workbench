@@ -957,6 +957,8 @@ and
 * `g:sw_sqlopen_command`: the vim command used by `SWSqlOpen` or
   `SWSqlOpenDirect` commands to open a buffer; possible values: `e|tabnew`;
   default value: "e", which means open with vim `edit` command
+* `g:sw_tab_switches_between_bottom_panels`: if set to true, then clicking tab
+  in a db explorer will switch between the bottom panels
 
 ## Database explorer settings
 
