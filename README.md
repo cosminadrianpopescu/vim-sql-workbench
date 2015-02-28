@@ -980,6 +980,9 @@ and
   you set this to 1, then the commands will be executed asynchronous 
 * `g:sw_vim_exe`: the default VIM executable location; this is used in
   conjunction with the asynchronous mode; default value: `vim`
+* `g:sw_delete_tmp`: if true, then delete the temporary files created to
+  execute any command. Useful for debugging. You can set it to 0 and check all
+  the generated files
 
 Screen shots
 ========================================
