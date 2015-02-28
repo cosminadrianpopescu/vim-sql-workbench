@@ -22,7 +22,7 @@ let s:pattern_identifier = '\v' . s:_pattern_identifier
 let s:pattern_reserved_word = '\v\c<(inner|outer|right|left|join|as|using|where|group|order|and|or|not)>'
 let s:pattern_subquery = '\v#sq([0-9]+)#'
 let s:script_path = expand('<sfile>:p:h') . '/../../'
-let s:pattern_expressions = '\v\c\(([\s\t ]*select)@![^\)]{-}\)'
+let s:pattern_expressions = '\v\c\(([\s\t ]*select)@![^\(\)]{-}\)'
 
 function! s:eliminate_sql_comments(sql)
     let sql = sw#get_sql_canonical(a:sql)[0]
@@ -455,6 +455,9 @@ endfunction
 function! s:extract_subqueries(sql)
     let pattern = '\v\c(\([ \s\t]*select[^\(\)]+\))'
     let s = substitute(a:sql, s:pattern_expressions, '#values#', 'g')
+	while s =~ s:pattern_expressions
+		let s = substitute(s, s:pattern_expressions, '#values#', 'g')
+	endwhile
     let matches = []
     let n = 0
     let m = matchstr(s, pattern, '')
@@ -538,7 +541,13 @@ function! s:get_subquery_fields(sql, subqueries)
             " get my_id, and then return the autocomplete with alias.my_id.
             " That's why we eliminate everything before the point
             " If the field does not contain *, we just get the last identifier
-            let f = matchstr(field, '\v([^ \t\s]+)$')
+			if field =~ '\v\.'
+				let f = matchstr(field, '\v([^\.]+)$')
+			elseif field =~ '\v[ ]'
+				let f = matchstr(field, '\v([^ ]+)$')
+			else
+				let f = field
+			endif
             call add(result, f)
         elseif field == '*'
             " If the field is *, we need to get the tables of this subquery

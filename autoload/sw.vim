@@ -70,6 +70,15 @@ function! s:get_wake_vim_cmd()
 	return s:wake_vim_cmd . ' --remote-expr "sw#got_async_result(' . s:get_buff_unique_id() . ')"'
 endfunction
 
+function! s:delete_tmp()
+	if (g:sw_delete_tmp)
+		call delete(g:sw_tmp . '/' . s:input_file())
+		call delete(g:sw_tmp . '/' . s:output_file())
+		call delete(g:sw_tmp . '/' . s:async_input_file())
+	endif
+endfunction
+
+
 function! sw#async_end()
     let idx = index(g:sw_async_ended, s:get_buff_unique_id())
     if idx != -1
@@ -81,10 +90,7 @@ function! sw#async_end()
             let func = b:on_async_result
             execute "call " . func . "()"
         endif
-
-        call delete(g:sw_tmp . '/' . s:input_file())
-        call delete(g:sw_tmp . '/' . s:output_file())
-        call delete(g:sw_tmp . '/' . s:async_input_file())
+		call s:delete_tmp()
     endif
 endfunction
 
@@ -96,10 +102,7 @@ function! sw#reset_current_command()
     if exists('b:async_on_progress')
         unlet b:async_on_progress
     endif
-
-    call delete(g:sw_tmp . '/' . s:input_file())
-    call delete(g:sw_tmp . '/' . s:output_file())
-    call delete(g:sw_tmp . '/' . s:async_input_file())
+	call s:delete_tmp()
 endfunction
 
 function! sw#kill_current_command()
@@ -118,10 +121,7 @@ function! sw#kill_current_command()
         call sw#session#unset_buffer_variable('on_async_kill')
         execute "call " . func . "()"
     endif
-
-    call delete(g:sw_tmp . '/' . s:input_file())
-    call delete(g:sw_tmp . '/' . s:output_file())
-    call delete(g:sw_tmp . '/' . s:async_input_file())
+	call s:delete_tmp()
 endfunction
 
 function! sw#check_async_result()
