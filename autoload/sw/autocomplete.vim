@@ -154,7 +154,7 @@ function! sw#autocomplete#cache()
     let sql = sql . "WbExport -type=xml -file=" . g:sw_tmp . "/sw_procs.xml -stylesheet=" . s:script_path . "resources/wbprocedures2vim.xslt -lineEnding=lf -xsltOutput=" . g:sw_tmp . "/sw_procs.vim;\n"
     let sql = sql . "WBListProcs;"
 
-	let b:on_async_result = 'sw#autocomplete#got_result'
+    call sw#set_on_async_result('sw#autocomplete#got_result')
     let result = sw#execute_sql(b:profile, sql)
 	if !sw#is_async()
         unlet b:on_async_result

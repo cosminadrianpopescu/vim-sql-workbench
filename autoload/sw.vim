@@ -88,10 +88,19 @@ function! sw#async_end()
         unlet b:async_on_progress
         if exists('b:on_async_result')
             let func = b:on_async_result
+            unlet b:on_async_result
             execute "call " . func . "()"
         endif
 		call s:delete_tmp()
     endif
+endfunction
+
+function! sw#set_on_async_result(value)
+    if exists('b:on_async_result') && exists('b:async_on_progress')
+        throw 'There is a command in progress for this buffer. Please wait for it to finish.'
+    endif
+
+    let b:on_async_result = a:value
 endfunction
 
 function! sw#reset_current_command()

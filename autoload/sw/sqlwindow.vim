@@ -149,7 +149,7 @@ function! sw#sqlwindow#export_last()
 endfunction
 
 function! sw#sqlwindow#extract_current_sql(...)
-    let lines = getbufline(bufname(bufnr('.')), 1, '$')
+    let lines = getbufline(bufname(bufnr('%')), 1, '$')
     let pos = getpos('.')
     let n = pos[2] - 2
     let m = n + 1
@@ -509,7 +509,7 @@ function! sw#sqlwindow#execute_sql(sql)
     if (b:max_results != 0)
         let _sql = w:auto_added1 . 'set maxrows = ' . b:max_results . "\n" . b:delimiter . "\n" . w:auto_added2 . _sql
     endif
-    let b:on_async_result = 'sw#sqlwindow#on_async_result'
+    call sw#set_on_async_result('sw#sqlwindow#on_async_result')
     let b:on_async_kill = 'sw#sqlwindow#on_async_kill'
     let result = sw#execute_sql(b:profile, _sql, 0)
 

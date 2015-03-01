@@ -204,7 +204,7 @@ function! s:process_search_result(result, columns)
 endfunction
 
 function! s:set_async_variables(columns)
-    let b:on_async_result = 'sw#search#on_async_result'
+    call sw#set_on_async_result('sw#search#on_async_result')
     let b:on_async_kill = 'sw#search#on_async_kill'
     let b:__columns = a:columns
 endfunction
