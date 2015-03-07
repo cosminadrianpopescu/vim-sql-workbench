@@ -97,20 +97,24 @@ function! s:get_panels()
     return ['__DBExplorer__-' . b:profile, '__SQL__-' . b:profile, '__Info__-' . b:profile]
 endfunction
 
-function! s:set_values_to_all_buffers(keys, values)
+function! sw#dbexplorer#set_values_to_all_buffers(keys, values)
     let name = bufname('%')
     for w in s:get_panels()
         call sw#goto_window(w)
         let i = 0
         while i < len(a:keys)
-            execute "let b:" . a:keys[i] . " = a:values[i]"
+            if (a:keys[i] != 'on_async_result')
+                execute "let b:" . a:keys[i] . " = a:values[i]"
+            else
+                call sw#set_on_async_result(a:values[i])
+            endif
             let i = i + 1
         endwhile
     endfor
     call sw#goto_window(name)
 endfunction
 
-function! s:unset_values_from_all_buffers(keys)
+function! sw#dbexplorer#unset_values_from_all_buffers(keys)
     let name = bufname('%')
     for w in s:get_panels()
         call sw#goto_window(w)
@@ -128,7 +132,7 @@ function! s:set_async_variables()
     for w in s:get_panels()
         call sw#goto_window(w)
         if exists('b:async_on_progress')
-            call s:set_values_to_all_buffers(['async_on_progress'], [b:async_on_progress])
+            call sw#dbexplorer#set_values_to_all_buffers(['async_on_progress'], [b:async_on_progress])
             break
         endif
     endfor
@@ -136,7 +140,7 @@ function! s:set_async_variables()
 endfunction
 
 function! s:unset_async_variables()
-    call s:unset_values_from_all_buffers(['async_on_progress'])
+    call sw#dbexplorer#unset_values_from_all_buffers(['async_on_progress'])
 endfunction
 
 function! s:process_result_1(result, shortcut, title)
@@ -184,11 +188,11 @@ function! s:process_result_1(result, shortcut, title)
 endfunction 
 
 function! s:set_tmp_variables_1(title, shortcut)
-    call s:set_values_to_all_buffers(['on_async_result', 'on_async_kill', '__title', '__shortcut'], ['sw#dbexplorer#on_async_result_1', 'sw#dbexplorer#on_async_result_1', a:title, a:shortcut])
+    call sw#dbexplorer#set_values_to_all_buffers(['on_async_result', 'on_async_kill', '__title', '__shortcut'], ['sw#dbexplorer#on_async_result_1', 'sw#dbexplorer#on_async_result_1', a:title, a:shortcut])
 endfunction
 
 function! s:unset_tmp_variables_1()
-    call s:unset_values_from_all_buffers(['on_async_result', 'on_async_kill', '__title', '__shortcut'])
+    call sw#dbexplorer#unset_values_from_all_buffers(['on_async_result', 'on_async_kill', '__title', '__shortcut'])
 endfunction
 
 function! sw#dbexplorer#on_async_result_1()
@@ -283,11 +287,11 @@ function! s:process_result_2(result, tab_shortcut, shortcut, cmd)
 endfunction
 
 function! s:set_tmp_variables_2(tab_shortcut, shortcut, cmd)
-    call s:set_values_to_all_buffers(['__tab_shortcut', '__shortcut', '__cmd', 'on_async_result', 'on_async_kill'], [a:tab_shortcut, a:shortcut, a:cmd, 'sw#dbexplorer#on_async_result_2', 'sw#dbexplorer#on_async_kill_2'])
+    call sw#dbexplorer#set_values_to_all_buffers(['__tab_shortcut', '__shortcut', '__cmd', 'on_async_result', 'on_async_kill'], [a:tab_shortcut, a:shortcut, a:cmd, 'sw#dbexplorer#on_async_result_2', 'sw#dbexplorer#on_async_kill_2'])
 endfunction
 
 function! s:unset_tmp_variables_2()
-    call s:unset_values_from_all_buffers(['__tab_shortcut', '__shortcut', '__cmd', 'on_async_result', 'on_async_kill']) 
+    call sw#dbexplorer#unset_values_from_all_buffers(['__tab_shortcut', '__shortcut', '__cmd', 'on_async_result', 'on_async_kill']) 
 endfunction
 
 function! s:change_panel(command, shortcut, title, tab_shortcut)

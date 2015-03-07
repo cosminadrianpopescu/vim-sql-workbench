@@ -217,9 +217,17 @@ function! s:asynchronious(columns, set)
         let a_name = s:get_resultset_name()
     endif
     if a:set
-        call s:set_async_variables(a:columns)
+        if sw#dbexplorer#is_db_explorer_tab()
+            call sw#dbexplorer#set_values_to_all_buffers(['on_async_result', 'on_async_kill', '__columns'], ['sw#search#on_async_result', 'sw#search#on_async_kill', 'a:columns'])
+        else
+            call s:set_async_variables(a:columns)
+        endif
     else
-        call s:unset_async_variables()
+        if sw#dbexplorer#is_db_explorer_tab()
+            call sw#dbexplorer#unset_values_from_all_buffers(['on_async_result', 'on_async_kill', '__columns'])
+        else
+            call s:unset_async_variables()
+        endif
     endif
     call sw#goto_window(a_name)
     if a:set
@@ -243,6 +251,7 @@ function! s:unset_async_variables()
 endfunction
 
 function! sw#search#on_async_result()
+    echomsg "ASYNC SEARCH RESULT"
     let result = sw#get_sql_result(0)
     let columns = g:sw_search_default_result_columns
     if exists('b:__columns')

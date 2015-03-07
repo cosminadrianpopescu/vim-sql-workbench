@@ -143,6 +143,7 @@ function! sw#check_async_result()
 endfunction
 
 function! sw#got_async_result(unique_id)
+    echomsg "GOT ASYNC RESULT" . a:unique_id
     call add(g:sw_async_ended, a:unique_id)
     if s:get_buff_unique_id() == a:unique_id
         if mode() == 'i' || mode() == 'R'

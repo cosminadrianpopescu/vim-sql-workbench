@@ -212,6 +212,12 @@ command! SWSqlAutocompleteWithDefault setlocal omnifunc=sw#autocomplete#perform
 command! SWSqlBufferRestore call sw#session#restore_sqlbuffer()
 command! -nargs=0 SWKillCurrentCommand call sw#kill_current_command()
 
+command! -nargs=+ -complete=customlist,sw#variables#autocomplete_names SWVarSet call sw#variables#set(<f-args>, '')
+command! -nargs=1 -complete=customlist,sw#variables#autocomplete_names SWVarUnset call sw#variables#unset(<f-args>)
+command! -nargs=0 SWVarDisable call sw#variables#disable()
+command! -nargs=0 SWVarEnable call sw#variables#enable()
+command! -nargs=0 SWVarList call sw#variables#list()
+
 augroup sw
 autocmd sw BufDelete,BufWipeout * call sw#session#sync()
 autocmd sw SessionLoadPost * call sw#session#restore()

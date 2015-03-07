@@ -30,10 +30,11 @@ CONTENTS:
 6. Exporting
 7. Sessions
 8. Asynchronous
-9. Commands
-19. Settings
-11. Screen shots
-12. Missing features
+9. Variables
+10. Commands
+11. Settings
+12. Screen shots
+13. Missing features
 
 Requirements
 ========================================
@@ -559,6 +560,65 @@ statement. The statement will get execute anyway.
 If any of the requirements is not met, you will not receive any error message.
 The plugin will silently switch to synchronous mode and work without issues. 
 
+Variables
+========================================
+
+`SQL Workbench/j` supports user defined variables (you can have your queries
+sent to the database parameterized). See
+[here](http://www.sql-workbench.net/manual/using-variables.html). 
+
+This plugin takes advantage of that and implements a few commands to help you
+use variables.
+
+By default, in `SQL Workbench`, the variables are enclosed between `$[` and
+`]`. [These can be
+changed](http://www.sql-workbench.net/manual/using-variables.html#access-variable). 
+
+By default, in `VIM SQL Workbench` the variable substitution is on. This
+means, that when you send a query to the database, the plugin will search for
+anything enclosed between the parameter prefix and suffix. Once a match is
+found, if a value is defined with `SWVarSet` then the match is replaced with
+this value. Please note that exactly the literal is replaced. No quotes are
+added and no escaping is executed. If you want quotes, you need to add then in
+the value. 
+
+If the variable is not defined using `SWVarSet` the plugin will ask for a
+value. If you don't want this string to be replaced when the query is sent to
+the database, then you can use an empty string as a value. If you want to send
+to the database an empty string, then you have to set the value `''`. 
+
+If you set already a value for a variable, you can always change it by
+executing again `SWVarSet`. 
+
+A variable can be unset using `SWVarUnset`. 
+
+If you don't want the plugin asking doing parameters substitution for a given
+buffer, you can call `SWVarDisable`. You can always re-enable the parameter
+switching by calling `SWVarEnable`.
+
+Example: 
+
+In your `workbench.settings` file: 
+
+```
+workbench.sql.parameter.prefix=:
+workbench.sql.parameter.suffix=
+```
+
+The sql query: `select * from table where d = '2015-01-01 00:00:00'`. 
+
+When launching this query, you will be asked for the value of the `00`
+variable. You can just press `enter` and the `:00` will not be replace. 
+
+The sql query: `select * from table where name = :name`. 
+
+When launching this query, you will be asked for the value of the `name`
+variable. If you enter `'Cosmin Popescu'`, the query sent to the DBMS will be
+`select * from table where name = 'Cosmin Popescu'`. Please note that if you
+just enter `Cosmin Popescu` (notice the missing quotes), the query sent to the
+DBMS will be `select * from table where name = Cosmin Popescu` which will
+obviously return an error. 
+
 Commands
 ========================================
 
@@ -893,6 +953,35 @@ this was active when `mksession` was executed.
 ## SWKillCurrentCommand
 
 This command will kill the current command being executed in asynchronous mode. 
+
+## SWVarSet
+
+*Parameters*:
+
+* the variable name: the name of the variable to be set
+* the value: the value that you want to set for this variable
+
+If you want to set a string enclosed between the `SQL Workbench/J` parameters
+suffix and prefix without being substituted, then set it to an empty string.
+If you want to replace a parameter with an empty string, set the value of the
+variable to `''`. 
+
+## SWVarUnset
+
+Unsets a variable
+
+## SWVarDisable
+
+Disables the replacement of the parameters in the queries sent to the DBMS.
+
+## SWVarEnable
+
+Enables the replacement of the parameters in the queries sent to the DBMS
+(enabled by default).
+
+## SWVarList
+
+Lists the parameters values
 
 Settings
 ========================================

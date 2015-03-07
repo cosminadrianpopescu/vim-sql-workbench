@@ -509,6 +509,17 @@ function! sw#sqlwindow#execute_sql(sql)
     if (b:max_results != 0)
         let _sql = w:auto_added1 . 'set maxrows = ' . b:max_results . "\n" . b:delimiter . "\n" . w:auto_added2 . _sql
     endif
+    if !exists('b:no_variables')
+        let vars = sw#variables#extract(_sql)
+        if len(vars) > 0
+            for var in vars
+                let value = sw#variables#get(var)
+                if value != ''
+                    let _sql = w:auto_added1 . 'wbvardef ' . var . ' = ' . value . "\n" . b:delimiter . "\n" . w:auto_added2 . _sql
+                endif
+            endfor
+        endif
+    endif
     call sw#set_on_async_result('sw#sqlwindow#on_async_result')
     let b:on_async_kill = 'sw#sqlwindow#on_async_kill'
     let result = sw#execute_sql(b:profile, _sql, 0)
