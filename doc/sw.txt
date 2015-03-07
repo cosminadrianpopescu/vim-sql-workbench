@@ -576,9 +576,9 @@ executing again |SWVarSet|.
 
 A variable can be unset using |SWVarUnset|. 
 
-If you don't want the plugin asking doing parameters substitution for a given
-buffer, you can call |SWVarDisable|. You can always re-enable the parameter
-switching by calling |SWVarEnable|.
+If you don't want the plugin doing parameters substitution for a given buffer,
+you can call |SWVarDisable|. You can always re-enable the parameter
+substitution by calling |SWVarEnable|.
 
 Example: 
 
