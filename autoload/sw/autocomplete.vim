@@ -24,6 +24,14 @@ let s:pattern_subquery = '\v#sq([0-9]+)#'
 let s:script_path = expand('<sfile>:p:h') . '/../../'
 let s:pattern_expressions = '\v\c\(([\s\t ]*select)@![^\(\)]{-}\)'
 
+function! s:tbl_cache_file()
+    return g:sw_autocomplete_cache_dir . '/' . b:profile . '_tbl.vim'
+endfunction
+
+function! s:proc_cache_file()
+    return g:sw_autocomplete_cache_dir . '/' . b:profile . '_proc.vim'
+endfunction
+
 function! s:eliminate_sql_comments(sql)
     let sql = sw#get_sql_canonical(a:sql)[0]
     let sql = substitute(sql, '\v--.{-}#NEWLINE#', '#NEWLINE#', 'g')
@@ -40,6 +48,10 @@ if exists('g:sw_plugin_path')
     let s:script_path = g:sw_plugin_path
 endif
 
+function! sw#autocomplete#sort(e1, e2)
+    return a:e1.word == a:e2.word ? 0 : a:e1.word > a:e2.word ? 1 : -1
+endfunction
+
 function! sw#autocomplete#table_fields(tbl, base)
     let result = []
     let fields = s:get_cache_data_fields(a:tbl)
@@ -50,7 +62,7 @@ function! sw#autocomplete#table_fields(tbl, base)
             endif
         endfor
     endif
-    return result
+    return sort(result, "sw#autocomplete#sort")
 endfunction
 
 function! sw#autocomplete#extract_current_sql()
@@ -118,7 +130,13 @@ function! s:set_default()
     let g:Str_sw_autocomplete_default_procs = string(g:sw_autocomplete_default_procs)
 endfunction
 
+function! s:deprecated(name, alternative)
+    echomsg "Please note that " . a:name . " is deprecated"
+    echomsg a:alternative
+endfunction
+
 function! sw#autocomplete#set_cache_default()
+    call s:deprecated('SWSqlAutocompleteSetDefault', "Use instead the g:sw_autocomplete_on_load option")
     call sw#autocomplete#cache()
     if sw#is_async()
         let b:__set_default = 1
@@ -128,30 +146,90 @@ function! sw#autocomplete#set_cache_default()
 endfunction
 
 function! sw#autocomplete#got_result()
-    if !filereadable(g:sw_tmp . "/sw_report.xml")
-        throw "There is a problem clearing the autocomplete cache. Please check your connection"
+    ""if !filereadable(g:sw_tmp . "/sw_report.xml")
+    ""    throw "There is a problem clearing the autocomplete cache. Please check your connection"
+    ""endif
+
+    if exists('s:current_profile')
+        let lines = readfile(s:tbl_cache_file())
+        for line in lines
+            if !(line =~ '\c\v^[ \s\t]*let[ \s\t]+g:tables[ \s\t]+\=[ \s\t]*\{\}')
+                call add(s:current_profile, line)
+            endif
+        endfor
+        call writefile(s:current_profile, s:tbl_cache_file())
+        unlet s:current_profile
     endif
 
-	call s:execute_file(g:sw_tmp . '/sw_report.vim')
-    call sw#session#set_buffer_variable('autocomplete_tables', g:tables)
-	call s:execute_file(g:sw_tmp . '/sw_procs.vim')
-    call sw#session#set_buffer_variable('autocomplete_procs', g:_procedures)
-    unlet g:_procedures
-    setlocal omnifunc=sw#autocomplete#perform
-    if exists('b:__set_default')
-        call s:set_default()
-        unlet b:__set_default
+    let nocompl = 1
+    if filereadable(s:tbl_cache_file())
+        call s:execute_file(s:tbl_cache_file())
+        call sw#session#set_buffer_variable('autocomplete_tables', g:tables)
+        let nocompl = 0
+    endif
+    if filereadable(s:proc_cache_file())
+        call s:execute_file(s:proc_cache_file())
+        call sw#session#set_buffer_variable('autocomplete_procs', g:_procedures)
+        unlet g:_procedures
+        let nocompl = 0
+    endif
+    if !nocompl
+        setlocal omnifunc=sw#autocomplete#perform
+        if exists('b:__set_default')
+            call s:set_default()
+            unlet b:__set_default
+        endif
     endif
 	echomsg "Autocomplete activated"
 endfunction
 
-function! sw#autocomplete#cache()
+function! sw#autocomplete#remove_table_from_cache(tbl)
+    if filereadable(s:tbl_cache_file())
+        let lines = readfile(s:tbl_cache_file())
+        let result = []
+        for line in lines
+            if !(line =~ '\v\c^[\s\t ]*let[\s\t ]+g:tables[ \s\t]*\[''(T|V)#' . a:tbl)
+                call add(result, line)
+            endif
+        endfor
+
+        call writefile(result, s:tbl_cache_file())
+    endif
+endfunction
+
+function! sw#autocomplete#cache(...)
     if (!exists('b:profile'))
         return
     endif
     call sw#session#init_section()
-    let sql = "WbSchemaReport -file=" . g:sw_tmp . "/sw_report.xml -objects=% -types='TABLE,VIEW,SYSTEM VIEW,MATERIALIZED VIEW,TEMPORARY TABLE,SYNONYM' -stylesheet=" . s:script_path . "resources/wbreport2vim.xslt -xsltOutput=" . g:sw_tmp . "/sw_report.vim;\n"
-    let sql = sql . "WbExport -type=xml -file=" . g:sw_tmp . "/sw_procs.xml -stylesheet=" . s:script_path . "resources/wbprocedures2vim.xslt -lineEnding=lf -xsltOutput=" . g:sw_tmp . "/sw_procs.vim;\n"
+    let objects = '%'
+    if a:0
+        let i = 1
+        let objects = ''
+        while i <= a:0
+            execute "let obj = a:" . i
+            if obj =~ '^-'
+                call sw#autocomplete#remove_table_from_cache(substitute(obj, '^-', '', 'g'))
+            else
+                call sw#autocomplete#remove_table_from_cache(obj)
+                let objects = objects . obj
+                if i < a:0
+                    let objects = objects . ','
+                endif
+            endif
+            let i = i + 1
+        endwhile
+    endif
+
+    if objects == ''
+        call sw#autocomplete#got_result()
+        return 
+    endif
+    if objects != '%'
+        let s:current_profile = readfile(s:tbl_cache_file())
+    endif
+    let sql = "WbSchemaReport -file=" . g:sw_tmp . "/sw_report.xml -objects=" . objects . " -types='TABLE,VIEW,SYSTEM VIEW,MATERIALIZED VIEW,TEMPORARY TABLE,SYNONYM' -stylesheet=" . s:script_path . "resources/wbreport2vim.xslt -xsltOutput=" . s:tbl_cache_file() . ";\n"
+    let sql = sql . "WbExport -type=xml -file=" . g:sw_tmp . "/sw_procs.xml -stylesheet=" . s:script_path . "resources/wbprocedures2vim.xslt -lineEnding=lf -xsltOutput=" . s:proc_cache_file() . ";\n"
     let sql = sql . "WBListProcs;"
 
     call sw#set_on_async_result('sw#autocomplete#got_result')
@@ -217,7 +295,7 @@ function! sw#autocomplete#views(base)
         endif
     endfor
 
-    return result
+    return sort(result, "sw#autocomplete#sort")
 endfunction
 
 function! sw#autocomplete#tables(base)
@@ -230,7 +308,7 @@ function! sw#autocomplete#tables(base)
         endif
     endfor
 
-    return result
+    return sort(result, "sw#autocomplete#sort")
 endfunction
 
 function! sw#autocomplete#all_objects(base)
@@ -241,7 +319,7 @@ function! sw#autocomplete#all_objects(base)
         endif
     endfor
 
-    return result
+    return sort(result, "sw#autocomplete#sort")
 endfunction
 
 function! sw#autocomplete#perform(findstart, base)
@@ -285,7 +363,7 @@ function! sw#autocomplete#perform(findstart, base)
                 "change in other versions
                 let fields = sw#autocomplete#table_fields(tbl, a:base)
                 if len(fields) > 0
-                    return fields
+                    return sort(fields, "sw#autocomplete#sort")
                 endif
             endif
         endif
@@ -297,7 +375,7 @@ function! sw#autocomplete#perform(findstart, base)
         " Desc type, easy peasy
         if (b:autocomplete_type == 'desc')
             return sw#autocomplete#all_objects(a:base)
-            return result
+            return sort(result, "sw#autocomplete#sort")
         elseif b:autocomplete_type == 'select' || b:autocomplete_type == 'update'
             " If a select, first get its tables
             let tables = s:get_tables(sql, [])
@@ -330,7 +408,7 @@ function! sw#autocomplete#perform(findstart, base)
                             endif
                         endfor
 
-                        return result
+                        return sort(result, "sw#autocomplete#sort")
                     endif
                 endfor
             else
@@ -370,7 +448,7 @@ function! sw#autocomplete#perform(findstart, base)
                         return sw#autocomplete#all_objects(a:base)
                     endif
 
-                    return result
+                    return sort(result, "sw#autocomplete#sort")
                 else
                     " Otherwise, just return the tables autocomplete
                     return sw#autocomplete#all_objects(a:base)
@@ -420,7 +498,7 @@ function! sw#autocomplete#perform(findstart, base)
                 endif
             endfor
 
-            return result
+            return sort(result, "sw#autocomplete#sort")
         endif
 
         return []

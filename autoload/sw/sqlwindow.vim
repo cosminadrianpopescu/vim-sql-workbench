@@ -76,6 +76,9 @@ function! s:do_open_buffer()
     call sw#session#autocommand('BufEnter', 'sw#sqlwindow#set_statement_shortcuts()')
     call sw#session#autocommand('BufEnter', 'sw#check_async_result()')
     call sw#sqlwindow#set_statement_shortcuts()
+    if g:sw_autocomplete_on_load
+        call sw#autocomplete#got_result()
+    endif
     ""normal gg
     ""put ='-- Current profile: ' . b:profile
 endfunction

@@ -53,6 +53,14 @@ if !exists('g:sw_search_default_tables')
     let g:sw_search_default_tables = '%'
 endif
 
+if !exists('g:sw_autocomplete_cache_dir')
+    let g:sw_autocomplete_cache_dir = $HOME . '/.cache/sw'
+endif
+
+if !exists('g:sw_autocomplete_on_load')
+    let g:sw_autocomplete_on_load = 1
+endif
+
 if !exists('g:sw_search_default_exclude_tables')
     let g:sw_search_default_exclude_tables = ''
 endif
@@ -206,7 +214,7 @@ command! -nargs=1 SWSearchObjectDefaults call sw#search#object_defaults(<f-args>
 command! -nargs=+ SWSearchData call sw#search#data(<f-args>)
 command! SWSearchDataAdvanced call sw#search#data()
 command! -nargs=1 SWSearchDataDefaults call sw#search#data_defaults(<f-args>)
-command! SWSqlAutocomplete call sw#autocomplete#cache()
+command! -nargs=* SWSqlAutocomplete call sw#autocomplete#cache(<f-args>)
 command! SWSqlAutocompleteSetDefault call sw#autocomplete#set_cache_default()
 command! SWSqlAutocompleteWithDefault setlocal omnifunc=sw#autocomplete#perform
 command! SWSqlBufferRestore call sw#session#restore_sqlbuffer()
