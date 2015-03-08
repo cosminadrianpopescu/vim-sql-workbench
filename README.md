@@ -945,19 +945,6 @@ plugin cache.
 
 The arguments are useful, if you use the `g:sw_autocomplete_on_load` option. 
 
-## SWSqlAutocompleteSetDefault
-
-Like the previous command, this command also activates the intellisense
-autocomplete for the current sql buffer. In addition to the previous command,
-this command will also set the list of tables and fields and procedures found
-for this profile as default autocomplete. They can be used by the
-`SWSqlAutocompleteWithDefault` command.
-
-## SWSqlAutocompleteWithDefault
-
-This command activates the intellisense autocomplete for the current sql
-buffer using the default list of tables, fields and procedures. 
-
 ## SWSqlBufferRestore
 
 This command will restore the properties of the sql buffer following a vim
