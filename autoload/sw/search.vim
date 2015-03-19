@@ -218,7 +218,7 @@ function! s:asynchronious(columns, set)
     endif
     if a:set
         if sw#dbexplorer#is_db_explorer_tab()
-            call sw#dbexplorer#set_values_to_all_buffers(['on_async_result', 'on_async_kill', '__columns'], ['sw#search#on_async_result', 'sw#search#on_async_kill', 'a:columns'])
+            call sw#dbexplorer#set_values_to_all_buffers(['on_async_result', 'on_async_kill', '__columns'], ['sw#search#on_async_result', 'sw#search#on_async_kill', a:columns])
         else
             call s:set_async_variables(a:columns)
         endif
@@ -239,19 +239,22 @@ function! s:asynchronious(columns, set)
 endfunction
 
 function! s:unset_async_variables()
-    if exists('b:on_async_result')
-        unlet b:on_async_result
-    endif
-    if exists('b:on_async_kill')
-        unlet b:on_async_kill
-    endif
-    if exists('b:__columns')
-        unlet b:__columns
+    if sw#dbexplorer#is_db_explorer_tab()
+        call sw#dbexplorer#unset_values_from_all_buffers(['on_async_result', 'on_async_kill', '__columns', 'async_on_progress'])
+    else
+        if exists('b:on_async_result')
+            unlet b:on_async_result
+        endif
+        if exists('b:on_async_kill')
+            unlet b:on_async_kill
+        endif
+        if exists('b:__columns')
+            unlet b:__columns
+        endif
     endif
 endfunction
 
 function! sw#search#on_async_result()
-    echomsg "ASYNC SEARCH RESULT"
     let result = sw#get_sql_result(0)
     let columns = g:sw_search_default_result_columns
     if exists('b:__columns')
