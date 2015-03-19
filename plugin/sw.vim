@@ -192,7 +192,7 @@ command! -nargs=1 -complete=customlist,sw#autocomplete_profile SWDbExplorer call
 command! -nargs=+ SWDbExplorerDirect call sw#dbexplorer#show_panel_no_profile(<f-args>)
 command! -nargs=? SWDbExplorerClose call sw#dbexplorer#hide_panel(<f-args>)
 command! SWDbExplorerRestore call sw#session#restore_dbexplorer()
-command! -nargs=1 -complete=customlist,sw#autocomplete_profile SWSqlBufferAddProfile call sw#sqlwindow#open_buffer(<f-args>, bufname('%'), 'e')
+command! -nargs=1 -complete=customlist,sw#autocomplete_profile SWSqlBufferSetProfile call sw#sqlwindow#open_buffer(<f-args>, bufname('%'), 'e')
 command! -nargs=+ -complete=customlist,sw#autocomplete_profile_for_buffer SWSqlOpen call sw#sqlwindow#open_buffer(<f-args>, g:sw_sqlopen_command)
 command! -nargs=+ -complete=file SWSqlOpenDirect call sw#sqlwindow#open_buffer_no_profile(<f-args>)
 command! SWSqlExecuteCurrent call sw#sqlwindow#execute_sql(sw#sqlwindow#extract_current_sql())
@@ -225,6 +225,10 @@ command! -nargs=1 -complete=customlist,sw#variables#autocomplete_names SWVarUnse
 command! -nargs=0 SWVarDisable call sw#variables#disable()
 command! -nargs=0 SWVarEnable call sw#variables#enable()
 command! -nargs=0 SWVarList call sw#variables#list()
+
+command! -nargs=+ -complete=customlist,sw#autocomplete_profile SWServerStart call sw#server#run(<f-args>)
+command! -nargs=1 SWServerStop call sw#server#stop(<f-args>)
+command! -nargs=+ -complete=file SWSqlConnectToServer call sw#server#connect_buffer(<f-args>, g:sw_sqlopen_command)
 
 augroup sw
 autocmd sw BufDelete,BufWipeout * call sw#session#sync()

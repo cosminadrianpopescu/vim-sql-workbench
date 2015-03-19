@@ -25,11 +25,13 @@ let s:script_path = expand('<sfile>:p:h') . '/../../'
 let s:pattern_expressions = '\v\c\(([\s\t ]*select)@![^\(\)]{-}\)'
 
 function! s:tbl_cache_file()
-    return g:sw_autocomplete_cache_dir . '/' . b:profile . '_tbl.vim'
+    let profile = substitute(b:profile, '\v\c^!#', '', 'g')
+    return g:sw_autocomplete_cache_dir . '/' . profile . '_tbl.vim'
 endfunction
 
 function! s:proc_cache_file()
-    return g:sw_autocomplete_cache_dir . '/' . b:profile . '_proc.vim'
+    let profile = substitute(b:profile, '\v\c^!#', '', 'g')
+    return g:sw_autocomplete_cache_dir . '/' . profile . '_proc.vim'
 endfunction
 
 function! s:eliminate_sql_comments(sql)

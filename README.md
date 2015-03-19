@@ -33,8 +33,8 @@ CONTENTS:
 9. Variables
 10. Commands
 11. Settings
-12. Screen shots
-13. Missing features
+12. Transactions
+13. Screen shots
 
 Requirements
 ========================================
@@ -242,9 +242,9 @@ The SQL buffer is a normal `vim` buffer from which you can send SQL commands
 to your DBMS and in which you can use the omni completion (&lt;C-x&gt;&lt;C-o&gt;) to have
 intellisense autocompletion. 
 
-In order to open a buffer, you have to call the command `SWSqlOpen` or
-`SWSqlOpenDirect`. You can see the parameters of each of the commands in the
-"Commands" chapter. 
+In order to open a buffer, you have to call the command `SWSqlOpen`,
+`SWSqlOpenDirect` or `SWSqlConnectToServer`. You can see the parameters of
+each of the commands in the "Commands" chapter. 
 
 Once in an sql buffer, you have several ways to execute commands against your
 DBMS: 
@@ -669,7 +669,7 @@ the indicated profile is closed.
 
 After a session restore, this command will restore an opened database panel
 
-## SWSqlBufferAddProfile
+## SWSqlBufferSetProfile
 
 *Parameters*: 
 
@@ -984,6 +984,38 @@ Enables the replacement of the parameters in the queries sent to the DBMS
 
 Lists the parameters values
 
+## SWServerStart
+
+*Parameters*:
+
+* the port: the port on which the server will listen
+* the profile: optional, you can choose a profile when starting the server
+
+This command will spawn a new server which will launch a `SQL Workbench/J` in
+console mode. This can be used if you want to use transactions. 
+
+Please note that you need `vim dispatch` plugin in order to run this from
+`vim`. 
+
+## SWServerStop
+
+*Parameters*:
+
+* the port: the port of the server to close. 
+
+This command will stop a server. Also the `SQL Workbench/J` instance in
+console mode will be closed. 
+
+## SWSqlConnectToServer
+
+*Parameters*: 
+
+* port: the port of the server
+* file name: the name of the file to open. 
+
+This will open a new buffer which will be connected to an existing
+`sqlwbconsole` server. 
+
 Settings
 ========================================
 
@@ -1078,6 +1110,107 @@ and
   execute any command. Useful for debugging. You can set it to 0 and check all
   the generated files
 
+Transactions
+========================================
+
+The `sql vim workbench` plugin uses `SQL Workbench/J` batch mode to send
+commands to the DBMS. See
+[here](http://www.sql-workbench.net/manual/using-scripting.html). This means
+that every time you send a statement, a connection to the database is opened,
+the statement is sent and then the connection is closed. So, it's obviously
+that a transaction will be ended after the statement is sent. 
+
+Starting with version `2.0` of the plugin, is it possible to also use the
+[console mode of `SQL
+Workbench/J`](http://www.sql-workbench.net/manual/console-mode.html). 
+
+## Requirements
+
+* `Vim` compiled with `python` supported
+* `Python` installed on the machine
+* `SQL Workbench/J` and the `vim` instance with which it communicates to be
+  installed on the same machine
+* Optional: [`vim dispatch`](https://github.com/tpope/vim-dispatch) plugin
+  installed.
+* `VIM` started in server mode
+
+In order to use the transactions, you need to use the server mode of the
+plugin. For this you need a permanent `SQL workbench/j` instance in memory.
+This is done starting the `resources/sqlwbconsole` `python` script. This will
+start an instance of `SQL Workbench/J` in console mode and then will start a
+server listening on the indicated port. Every time when you connect to that
+port, you can send a command to the `SQL Workbench/J` instance. 
+
+Basically the plugin will connect to this port (using a `python` function,
+thus the need to have `vim` compiled with `python` support), will send the
+command and it will indicate to the server where it will wait for the result. 
+
+The `resources/sqlwbconsole` script will send the command to `SQL
+Workbench/J`, get its output and send it back to vim. 
+
+There are two ways to start a permanent connection: 
+
+## Opening a permanent connection automatically
+
+For this you need to have the `vim dispatch` plugin installed. If you want to
+start a new permanent connection from `vim`, you can call the command
+`SWServerStart` with the port on which the server will listen. Also, you can
+choose a profile for the new connection. If you don't choose a profile now,
+you will have to execute `WbConnect` in order to connect to a database. 
+
+Please note that having a permanent connection, you can also do `WBConnect` to
+change the connection. See
+[here](http://www.sql-workbench.net/manual/wb-commands.html#command-connect)
+for more informations. 
+
+For example: `SWServerStart 5000`. 
+
+## Opening a permanent connection manually
+
+If you don't want or you can't install the `vim dispatch` plugin, you can
+always open a permanent connection manually. From your terminal, you need to
+run the `resources/sqlwbconsole` script. For a list of parameters you can do
+`resources/sqlwbconsole --help`. The following parameters are mandatory: 
+
+* The temporary folder (`-t`). Please note that this should be identical with
+  `g:sw_tmp`
+* The vim server name (`-s`). You can get this by doing `:echo v:servername`
+  in your `vim`
+* The path to your `sqlwbconsole` executable (`-c`). 
+* The port on which to listen (`-o`)
+
+*Example*: 
+
+```
+`resources/sqlwbconsole -t /tmp -s VIM -c /usr/bin/sqlwbconsole.sh -o 5000`
+```
+
+You can also use the `-p` parameter, to also connect to a database. Otherwise,
+after you connect with a buffer, you will need to do `WbConnect`. 
+
+If you don't want to use this way of sending commands, you can at any time run
+the `SWSqlBufferSetProfile` command to switch to the batch mode. 
+
+## Misc. 
+
+Please note that the server is not multi-threading. This means that only a
+command is executed at a time, even if you connect from 2 buffers to the same
+instance. This is because a server only handles one `SQL Workbench/J` instance
+at a time, and that can only execute one command at a time. 
+
+If you want to execute commands in parallel for the same profile, you need to
+create two profiles with the same preferences, then spawn servers for each of
+these profiles and connect each buffer to each of these servers. 
+
+*NOTE*:
+
+This is not tested at all at the moment, so consider this feature `pre alpha`.
+I will begin testing it in the following days, and as soon as I will discover
+bugs, I will fix them and eliminate this note when it will become more stable. 
+
+Also, please note, if you start the server manually, that you need to first
+start `vim` and then the server. 
+
 Screen shots
 ========================================
 
@@ -1087,19 +1220,3 @@ Screen shots
 ![SQL Buffer result set](resources/screenshots/s04.jpg)
 ![SQL Buffer row displayed as form](resources/screenshots/s05.jpg)
 ![SQL Buffer resultset messages](resources/screenshots/s06.jpg)
-
-Missing Features
-========================================
-
-The biggest missing feature are the transactions. Since every command is
-executed using the console mode of `SQL Workbench` and then the result is
-taken from a temporary file and displayed, this means that the connection to
-the database is opened and closed every time when a command is sent to the
-DBMS. 
-
-In order to fix this, would be nice if the `SQL Workbench` software would have
-a start as daemon feature. Since this is not yet the case, at the moment the
-transactions cannot be implemented. 
-
-However, I will look into possibilities. If anybody has any idea on how to
-implement transactions, I am willing to implement it. 

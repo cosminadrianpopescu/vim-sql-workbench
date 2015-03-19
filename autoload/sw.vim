@@ -63,6 +63,10 @@ function! sw#is_async()
 		endif
 	endif
 
+    if exists('b:port')
+        throw "Sorry, you cannot execute any command. You are trying to execute something against a SQL Workbench server, but the VIM SQL Workbench plugin is not set to run asynchronous. In order to be able to connect to use SQL Workbench in server mode, please set the g:sw_asynchronious variable and set run vim in server mode"
+    endif
+
 	return 0
 endfunction
 
@@ -96,7 +100,7 @@ function! sw#async_end()
 endfunction
 
 function! sw#set_on_async_result(value)
-    if exists('b:on_async_result') && exists('b:async_on_progress')
+    if exists('b:on_async_result') && exists('b:async_on_progress') && !sw#dbexplorer#is_db_explorer_tab()
         throw 'There is a command in progress for this buffer. Please wait for it to finish.'
     endif
 
@@ -142,28 +146,37 @@ function! sw#check_async_result()
     endif
 endfunction
 
+function! sw#interrupt(...)
+    if mode() == 'i' || mode() == 'R'
+        let m = mode()
+        if m == 'i'
+            let m = 'a'
+        endif
+        if a:0
+            execute "call " . a:1
+        endif
+        execute "normal " . m
+    elseif mode() == 'V' || mode() == 'v' || mode() == 's'
+        let m = mode()
+        normal 
+        if a:0
+            execute "call " . a:1
+        endif
+        normal gv
+        if m == 's'
+            normal 
+        endif
+    else
+        if a:0
+            execute "call " . a:1
+        endif
+    endif
+endfunction
+
 function! sw#got_async_result(unique_id)
-    echomsg "GOT ASYNC RESULT" . a:unique_id
     call add(g:sw_async_ended, a:unique_id)
     if s:get_buff_unique_id() == a:unique_id
-        if mode() == 'i' || mode() == 'R'
-            let m = mode()
-            if m == 'i'
-                let m = 'a'
-            endif
-            call sw#async_end()
-            execute "normal " . m
-        elseif mode() == 'V' || mode() == 'v' || mode() == 's'
-            let m = mode()
-            normal 
-            call sw#async_end()
-            normal gv
-            if m == 's'
-                normal 
-            endif
-        else
-            call sw#async_end()
-        endif
+        call sw#interrupt('sw#async_end()')
     endif
     redraw!
     return ''
@@ -173,6 +186,22 @@ function! s:on_windows()
 	if exists('v:progname')
 		return v:progname =~ '\v\.exe$'
 	endif
+endfunction
+
+function! s:set_async_on_progress()
+    if sw#dbexplorer#is_db_explorer_tab()
+        call sw#dbexplorer#set_values_to_all_buffers(['async_on_progress'], [1])
+    else
+        let b:async_on_progress = 1
+    endif
+endfunction
+
+function! s:unset_async_on_progress()
+    if sw#dbexplorer#is_db_explorer_tab()
+        call sw#dbexplorer#unset_values_to_all_buffers(['async_on_progress'])
+    else
+        unlet b:async_on_progress
+    endif
 endfunction
 
 " Executes a shell command{{{1
@@ -204,7 +233,7 @@ function! sw#do_shell(command)
 		endif
 
 		if async
-            let b:async_on_progress = 1
+            call s:set_async_on_progress()
 			return 1
 		endif
 	endif
@@ -269,6 +298,14 @@ function! sw#get_sql_result(touch_result)
 	return result
 endfunction
 
+function! sw#get_sw_profile()
+    if exists('b:profile')
+        return b:profile
+    endif
+
+    return ''
+endfunction
+
 " Executes an sql command{{{1
 function! sw#execute_sql(profile, command, ...)
     if sw#is_async()
@@ -278,6 +315,7 @@ function! sw#execute_sql(profile, command, ...)
             endif
         endif
     endif
+
     execute "silent !echo '' >" . g:sw_tmp . '/' . s:output_file()
     let delimiter = ''
     if (exists('b:delimiter'))
@@ -321,18 +359,23 @@ function! sw#execute_sql(profile, command, ...)
         endif
     endif
     let g:sw_last_command = c
-    let lines = split(a:command, "\n")
-    call writefile(lines, g:sw_tmp . '/' . s:input_file())
-	" If do_shell returns 0, it means that the command was not executed
-	" asynchroniously
-	if (!sw#do_shell(c))
-		redraw!
-		let touch_result = 1
-		if a:0
-			let touch_result = a:1
-		endif
-		return sw#get_sql_result(touch_result)
-	endif
+    if !exists('b:port')
+        let lines = split(a:command, "\n")
+        call writefile(lines, g:sw_tmp . '/' . s:input_file())
+        " If do_shell returns 0, it means that the command was not executed
+        " asynchroniously
+        if (!sw#do_shell(c))
+            redraw!
+            let touch_result = 1
+            if a:0
+                let touch_result = a:1
+            endif
+            return sw#get_sql_result(touch_result)
+        endif
+    else
+        call s:set_async_on_progress()
+        call sw#server#execute_sql(a:command)
+    endif
 
 	redraw!
 	return []
@@ -584,11 +627,7 @@ function! sw#autocomplete_profile(ArgLead, CmdLine, CursorPos)
     return result
 endfunction
 
-function! sw#autocomplete_profile_for_buffer(ArgLead, CmdLine, CursorPos)
-    let words = split(a:CmdLine, '\v\s+')
-    if len(words) == 1 || (len(words) == 2 && !(a:CmdLine =~ '\v\s+$'))
-        return sw#autocomplete_profile(a:ArgLead, a:CmdLine, a:CursorPos)
-    endif
+function! s:autocomplete_path(ArgLead, CmdLine, CursorPos)
     if a:ArgLead =~ '\v^\s*$'
         let path = '*'
     else
@@ -597,4 +636,21 @@ function! sw#autocomplete_profile_for_buffer(ArgLead, CmdLine, CursorPos)
     return split(glob(path), '\n')
 endfunction
 
+function! sw#autocomplete_profile_for_server(ArgLead, CmdLine, CursorPos)
+    let words = split(a:CmdLine, '\v\s+')
+    if len(words) == 4 || (len(words) == 3 && a:CmdLine =~ '\v\s+$')
+        return sw#autocomplete_profile(a:ArgLead, a:CmdLine, a:CursorPos)
+    endif
+    if len(words) == 3 || (len(words) == 2 && a:CmdLine =~ '\v\s+$')
+        return s:autocomplete_path(a:ArgLead, a:CmdLine, a:CursorPos)
+    endif
+    return []
+endfunction
 
+function! sw#autocomplete_profile_for_buffer(ArgLead, CmdLine, CursorPos)
+    let words = split(a:CmdLine, '\v\s+')
+    if len(words) == 1 || (len(words) == 2 && !(a:CmdLine =~ '\v\s+$'))
+        return sw#autocomplete_profile(a:ArgLead, a:CmdLine, a:CursorPos)
+    endif
+    return s:autocomplete_path(a:ArgLead, a:CmdLine, a:CursorPos)
+endfunction

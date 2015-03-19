@@ -73,6 +73,7 @@ function! s:do_open_buffer()
     call sw#session#set_buffer_variable('abort_on_errors', g:sw_abort_on_errors)
     call sw#session#set_buffer_variable('feedback', g:sw_feedback)
     call sw#session#set_buffer_variable('unique_id', sw#generate_unique_id())
+    call sw#session#unset_buffer_variable('port')
     call sw#session#autocommand('BufEnter', 'sw#sqlwindow#set_statement_shortcuts()')
     call sw#session#autocommand('BufEnter', 'sw#check_async_result()')
     call sw#sqlwindow#set_statement_shortcuts()
@@ -139,6 +140,9 @@ endfunction
 
 function! sw#sqlwindow#set_delimiter(new_del)
     call s:check_sql_buffer()
+    if exists('b:port')
+        throw 'You cannot change the delimier in server mode. This happens because SQL Workbench does now know another delimiter during console mode. You can only change the delimiter in batch mode (see the documentation). So, if you want to change the delimiter, please open the buffer in batch mode. '
+    endif
     call sw#session#set_buffer_variable('delimiter', a:new_del)
 endfunction
 
@@ -406,7 +410,7 @@ endfunction
 function! s:process_result(result)
     let result = a:result
     let uid = b:unique_id
-    let name = "__SQLResult__-" . b:profile . '__' . b:unique_id
+    let name = sw#sqlwindow#get_resultset_name()
     let profile = b:profile
 
     if (bufexists(name))
@@ -533,7 +537,11 @@ function! sw#sqlwindow#execute_sql(sql)
         call s:process_result(result)
     else
         if sw#is_async()
-            call s:process_result(['Processing a command. Please wait...'])
+            if (exists('b:port'))
+                echomsg "Processing a command. Please wait..."
+            else
+                call s:process_result(['Processing a command. Please wait...'])
+            endif
         endif
     endif
 endfunction
@@ -551,7 +559,7 @@ endfunction
 
 function! sw#sqlwindow#get_resultset_name()
     if exists('b:profile') && exists('b:unique_id')
-        return '__SQLResult__-' . b:profile . '__' . b:unique_id
+        return '__SQLResult__-' . sw#get_sw_profile() . '__' . b:unique_id
     endif
     return ''
 endfunction
@@ -581,7 +589,7 @@ endfunction
 
 function! sw#sqlwindow#check_hidden_results()
     if exists('g:sw_session')
-        let name = '__SQLResult__-' . b:profile . '__' . b:unique_id
+        let name = sw#sqlwindow#get_resultset_name()
         if bufwinnr(name) != -1
             return
         endif

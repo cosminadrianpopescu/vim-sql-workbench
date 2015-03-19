@@ -106,7 +106,7 @@ endfunction
 
 function! sw#variables#extract(sql)
     call s:set_delimiters()
-    let pattern = g:sw_p_prefix . '\(.\{-\}\)' . g:sw_p_suffix . '\>'
+    let pattern = g:sw_p_prefix . '\([a-zA-Z_].\{-\}\)' . g:sw_p_suffix . '\>'
     let result = []
     let n = 0
     let i = match(a:sql, pattern, n)
