@@ -64,17 +64,15 @@ function! s:get_first_tab(tab)
 endfunction
 
 " Set a special buffer{{{2
-function! s:set_special_buffer(profile, connection)
+function! s:set_special_buffer(profile, port)
     call sw#session#init_section()
-    call sw#set_special_buffer(a:profile)
+    call sw#set_special_buffer()
+    call sw#session#set_buffer_variable('profile', a:profile)
+    call sw#session#set_buffer_variable('port', a:port)
     call sw#session#set_buffer_variable('t1_shortcuts', 'Main shortcuts:')
     call sw#session#set_buffer_variable('t2_shortcuts', 'Available shortcuts in the left panel:')
     call sw#session#set_buffer_variable('t3_shortcuts', 'Available shortcuts in the right panel:')
-    call sw#session#autocommand('BufEnter', 'sw#check_async_result()')
-
-    if (a:connection != '')
-        call sw#session#set_buffer_variable('connection', a:connection)
-    endif
+    ""call sw#session#autocommand('BufEnter', 'sw#check_async_result()')
 
 	call s:iterate('s:add_shortcut')
 
@@ -127,31 +125,12 @@ function! sw#dbexplorer#unset_values_from_all_buffers(keys)
     call sw#goto_window(name)
 endfunction
 
-function! s:set_async_variables()
-    let name = bufname('%')
-    for w in s:get_panels()
-        call sw#goto_window(w)
-        if exists('b:async_on_progress')
-            call sw#dbexplorer#set_values_to_all_buffers(['async_on_progress'], [b:async_on_progress])
-            break
-        endif
-    endfor
-    call sw#goto_window(name)
-endfunction
-
-function! s:unset_async_variables()
-    call sw#dbexplorer#unset_values_from_all_buffers(['async_on_progress'])
-endfunction
-
 function! s:process_result_1(result, shortcut, title)
     let result = a:result
     call sw#goto_window('__Info__-' . b:profile)
     call sw#session#set_buffer_variable('current_tab', a:shortcut)
     call sw#goto_window('__SQL__-' . b:profile)
     call sw#session#set_buffer_variable('current_tab', a:shortcut)
-    if (exists('b:last_cmd'))
-        call sw#session#unset_buffer_variable('last_cmd')
-    endif
     setlocal modifiable
     normal! ggdG
     setlocal nomodifiable
@@ -187,62 +166,10 @@ function! s:process_result_1(result, shortcut, title)
     endif
 endfunction 
 
-function! s:set_tmp_variables_1(title, shortcut)
-    call sw#dbexplorer#set_values_to_all_buffers(['on_async_result', 'on_async_kill', '__title', '__shortcut'], ['sw#dbexplorer#on_async_result_1', 'sw#dbexplorer#on_async_result_1', a:title, a:shortcut])
-endfunction
-
-function! s:unset_tmp_variables_1()
-    call sw#dbexplorer#unset_values_from_all_buffers(['on_async_result', 'on_async_kill', '__title', '__shortcut'])
-endfunction
-
-function! sw#dbexplorer#on_async_result_1()
-    let result = sw#get_sql_result(1)
-    call s:process_result_1(result, b:__shortcut, b:__title)
-    call s:unset_async_variables()
-endfunction
-
-function! sw#dbexplorer#on_async_result_2()
-    let result = sw#get_sql_result(1)
-    call s:process_result_2(result, b:__tab_shortcut, b:__shortcut, b:__cmd)
-    call s:unset_async_variables()
-endfunction
-
-function! sw#dbexplorer#on_async_kill_1()
-    call s:unset_tmp_variables_1()
-    call s:unset_async_variables()
-    call sw#goto_window('__DBExplorer__-' . b:profile)
-    setlocal modifiable
-    put ='Interrupted'
-    setlocal nomodifiable
-endfunction
-
-function! sw#dbexplorer#on_async_kill_2()
-    call s:unset_tmp_variables_2()
-    call s:unset_async_variables()
-    call sw#goto_window('__SQL__-' . b:profile)
-    setlocal modifiable
-    put ='Interrupted'
-    setlocal nomodifiable
-endfunction
-
 " Change a tab{{{2
 function! s:change_tab(command, shortcut, title)
-    let result = sw#execute_sql(b:profile, a:command)
-    call s:set_async_variables()
-    call s:set_tmp_variables_1(a:title, a:shortcut)
-    if (len(result) != 0)
-        call s:unset_tmp_variables_1()
-        call s:process_result_1(result, a:shortcut, a:title)
-    else
-        if sw#is_async()
-            call sw#goto_window('__DBExplorer__-' . b:profile)
-            setlocal modifiable
-            normal ggdG
-            put ='Loading ' . a:title . '... Please wait.'
-            normal ggdd
-            setlocal nomodifiable
-        endif
-    endif
+    let result = sw#server#dbexplorer(a:command)
+    call s:process_result_1(result, a:shortcut, a:title)
 endfunction
 
 function! s:process_result_2(result, tab_shortcut, shortcut, cmd)
@@ -286,15 +213,8 @@ function! s:process_result_2(result, tab_shortcut, shortcut, cmd)
     endif
 endfunction
 
-function! s:set_tmp_variables_2(tab_shortcut, shortcut, cmd)
-    call sw#dbexplorer#set_values_to_all_buffers(['__tab_shortcut', '__shortcut', '__cmd', 'on_async_result', 'on_async_kill'], [a:tab_shortcut, a:shortcut, a:cmd, 'sw#dbexplorer#on_async_result_2', 'sw#dbexplorer#on_async_kill_2'])
-endfunction
-
-function! s:unset_tmp_variables_2()
-    call sw#dbexplorer#unset_values_from_all_buffers(['__tab_shortcut', '__shortcut', '__cmd', 'on_async_result', 'on_async_kill']) 
-endfunction
-
 function! s:change_panel(command, shortcut, title, tab_shortcut)
+    echomsg "Processing request..."
     "if line('.') < 5
     "    echoerr "You have to select an object in the left panel"
     "    return 
@@ -305,22 +225,8 @@ function! s:change_panel(command, shortcut, title, tab_shortcut)
     let object = substitute(getline('.'), '\v^([^ ]+) .*$', '\1', 'g')
     call sw#session#set_buffer_variable('selected_row', matchadd('SWSelectedObject', '^' . object . ' .*$'))
     let cmd = substitute(a:command, '\v\%object\%', object, 'g')
-    call s:set_tmp_variables_2(a:tab_shortcut, a:shortcut, cmd)
-    let result = sw#execute_sql(b:profile, cmd)
-    call s:set_async_variables()
-    if len(result) != 0
-        call s:unset_tmp_variables_2()
-        call s:process_result_2(result, a:tab_shortcut, a:shortcut, cmd)
-    else
-        if sw#is_async()
-            call sw#goto_window('__SQL__-' . b:profile)
-            setlocal modifiable
-            normal ggdG
-            put ='Loading ' . a:title . '... Please wait.'
-            normal ggdd
-            setlocal modifiable
-        endif
-    endif
+    let result = sw#server#dbexplorer(cmd)
+    call s:process_result_2(result, a:tab_shortcut, a:shortcut, cmd)
 endfunction
 
 " Adds a shortcut from a tab to the current buffer{{{2
@@ -458,6 +364,7 @@ function! sw#dbexplorer#show_panel_no_profile(...)
 endfunction
 
 function! sw#dbexplorer#restore_from_session(...)
+    echomsg "Processing request..."
     let connection = ''
     if exists('b:connection')
         let connection = b:connection
@@ -488,7 +395,8 @@ function! s:set_highlights()
 endfunction
 
 " Shows the dbexplorer panel{{{2
-function! sw#dbexplorer#show_panel(profile, ...)
+function! sw#dbexplorer#show_panel(profile, port, ...)
+    let result = sw#server#open_dbexplorer(a:profile, a:port)
     let s_below = &splitbelow
     set nosplitbelow
     let name = "__SQL__-" . a:profile
@@ -512,19 +420,19 @@ function! sw#dbexplorer#show_panel(profile, ...)
 
     execute "badd " . name
     execute "buffer " . name
-    call s:set_special_buffer(a:profile, connection)
+    call s:set_special_buffer(a:profile, a:port)
     call sw#session#set_buffer_variable('unique_id', uid)
     nnoremap <buffer> <silent> E :call sw#dbexplorer#export()<cr>
     nnoremap <buffer> <silent> B :call <SID>open_in_new_buffer()<cr>
     execute "silent! split __Info__-" . a:profile
     resize 7
     "let id = matchadd('SWHighlights', '\v^([^\(]+\([A-Za-z]+\)( \| )?)+$')
-    call s:set_special_buffer(a:profile, connection)
+    call s:set_special_buffer(a:profile, a:port)
     call sw#session#set_buffer_variable('unique_id', uid)
     call s:set_highlights()
     wincmd b
     execute "silent! vsplit __DBExplorer__-" . a:profile
-    call s:set_special_buffer(a:profile, connection)
+    call s:set_special_buffer(a:profile, a:port)
     call sw#session#set_buffer_variable('unique_id', uid)
     vertical resize 60
     ""call s:set_objects_buffer()

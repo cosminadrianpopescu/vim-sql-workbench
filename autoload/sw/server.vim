@@ -38,15 +38,16 @@ function! sw#server#run(port, ...)
     redraw!
 endfunction
 
-function! sw#server#connect_buffer(port, file, command)
-    let profile = 'server_' . a:port
-    call sw#sqlwindow#open_buffer(profile, a:file, a:command)
-    call sw#session#set_buffer_variable('profile', 'server_' . a:port . '_' . b:unique_id)
-    call sw#session#set_buffer_variable('port', a:port)
-endfunction
-
-function! sw#server#ping(port)
-    call s:pipe_execute('/*!#ping*/', a:port)
+function! sw#server#connect_buffer(port, ...)
+    let file = bufname('%')
+    let command = 'e'
+    if (a:0 >= 2)
+        let file = a:1
+        let command = a:2
+    elseif a:0 >= 1
+        let command = a:1
+    endif
+    call sw#sqlwindow#open_buffer(a:port, file, command)
 endfunction
 
 function! sw#server#new(port)
@@ -71,7 +72,7 @@ function! sw#server#remove(port)
     return ''
 endfunction
 
-function! s:pipe_execute(cmd, ...)
+function! s:pipe_execute(type, cmd, wait_result, ...)
     let port = 0
     if a:0
         let port = a:1
@@ -90,27 +91,89 @@ function! s:pipe_execute(cmd, ...)
 
     python << SCRIPT
 import vim
-buffer_id = vim.eval('uid')
-instance_id = vim.eval('g:sw_instance_id')
+import re
+identifier = vim.eval('v:servername') + "#" + vim.eval('uid')
 cmd = vim.eval('a:cmd') + "\n"
 port = int(vim.eval('port'))
+type = vim.eval('a:type')
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 s.connect(('127.0.0.1', port))
-s.sendall("!#buffer_id = " + buffer_id + "\n")
-s.sendall("!#instance_id = " + instance_id + "\n")
+s.sendall(type)
+if vim.eval('a:wait_result') == '0':
+    s.sendall("!#identifier = " + identifier + "\n")
+#end if
 s.sendall(cmd)
+if vim.eval('a:wait_result') == '0' or (vim.eval('a:wait_result') == '1' and type != 'RES' and type != 'DBE'):
+    s.sendall("!#end = 1\n")
+#end if
+result = ''
+if vim.eval('a:wait_result') == '1':
+    while 1:
+        data = s.recv(4096)
+        if (re.search('^DISCONNECT', data)):
+            break
+        #end if
+        if not data:
+            break
+        #end if
+        result += data
+    #end while
+#end if
 s.close()
+vim.command("let result = ''")
+lines = result.split("\n")
+for line in lines:
+    vim.command("let result = result . '%s\n'" % line.replace("'", "''"))
+#end for
 SCRIPT
+    if len(result) <= 3
+        let result = ''
+    endif
+    return substitute(result, '\r', '', 'g')
 endfunction
 
 function! sw#server#stop(port)
-    call s:pipe_execute("exit", a:port)
+    call s:pipe_execute('COM', "exit", 0, a:port)
 endfunction
 
-function! sw#server#execute_sql(sql)
+function! sw#server#fetch_result()
+    let result = s:pipe_execute('RES', v:servername . "#" . b:unique_id, 1, b:port)
+    return result
+endfunction
+
+function! sw#server#open_dbexplorer(profile, port)
+    return s:pipe_execute('DBE', a:profile . "\n", 1, a:port)
+endfunction
+
+function! sw#server#dbexplorer(sql)
+    if !exists('b:profile')
+        return
+    endif
+    let s = s:pipe_execute('DBE', b:profile . "\n" . a:sql . ';', 1)
+    let lines = split(s, "\n")
+    let result = []
+    let rec = 0
+    for line in lines
+        if line =~ '\v\c^[ \s\t\r]*$'
+            let rec = 0
+            if (len(result) > 0)
+                call add(result, '')
+            endif
+        endif
+        if rec
+            call add(result, line)
+        endif
+        if line =~ '\v\c^[\=]+$'
+            let rec = 1
+        endif
+    endfor
+    return result
+endfunction
+
+function! sw#server#execute_sql(sql, wait_result, port)
     let sql = a:sql
     if !(substitute(sql, "^\\v\\c\\n", ' ', 'g') =~ b:delimiter . '[ \s\t\r]*$')
-        let sql = sql . b:delimiter
+        let sql = sql . b:delimiter . "\n"
     endif
-    call s:pipe_execute(sql)
+    return s:pipe_execute('COM', sql, a:wait_result, a:port)
 endfunction

@@ -39,7 +39,14 @@ CONTENTS:
 Requirements
 ========================================
 
-Of course you need VIM 7 or above. The only other requirement is [`SQL
+* `Vim` compiled with `python` supported
+* `Python` installed on the machine
+* `SQL Workbench/J` installed on the machine
+* Optional: [`vim dispatch`](https://github.com/tpope/vim-dispatch) plugin
+  installed.
+* `VIM` started in server mode
+
+Of course you need VIM 7 or above. You also need [`SQL
 Workbench/J`](http://www.sql-workbench.net/) installed on your computer. It is
 platform independent, since `SQL Workbench` is written in JAVA and it should
 work anywhere where VIM works. 
@@ -53,61 +60,88 @@ point to your `sqlwbconsole` file. If you are on Windows, it should be
 Also, if you are on Windows, you have to set the `g:sw_tmp` value in your
 `vimrc`. The default value is `/tmp`. 
 
+The communication with the DBMS is made through the `sqlwbserver` script, that
+you can find in the `resources` folder of the plugin. This is a `python`
+script (hence the need to have `python` installed on the machine) and it will
+spawn a `sqlwbconsole` instance in memory and then open a port on which will
+listen for requests. After this, whenever you want to send a command to the
+DBMS from `VIM`, the plugin will connect on the specified port, send the
+command and retrieve the result which will be displayed in `VIM`. 
+
 Connecting to a DBMS
 ========================================
 
-You can connect from vim to a database (DBMS independent) in two ways: 
+First of all, you need to open have a `sqlwbserver` running in memory. There
+are two ways to run a server. 
 
-* specifying the full connection parameters
-* specifying a `SQL Workbench` profile
+## Starting a server from vim
 
-## Connecting by specifying the full connection parameters
+For this you need to have the `vim dispatch` plugin installed. If you want to
+start the server from `vim`, you can call the command `SWServerStart` with the
+port on which the server will listen. Also, you can choose a profile for the
+new connection. If you don't choose a profile now, you will have to execute
+[`WbConnect`](http://www.sql-workbench.net/manual/wb-commands.html#command-connect)
+in order to connect to a database. 
 
-From VIM you can call the `SWDbExplorerDirect` command. The command takes the
-arguments that an `SQL Workbench/J` connection takes. For a full list of
-arguments, please have a look
-[here](http://www.sql-workbench.net/manual/install.html#commandline). Check
-the `4.9.7` section (connecting without a profile). For example: 
+For example: `SWServerStart 5000`. 
+
+## Starting a server from command line
+
+If you don't want or you can't install the `vim dispatch` plugin, you can
+always start a server from command line. From your terminal, you need to
+run the `resources/sqlwbserver` script. For a list of parameters you can do
+`resources/sqlwbserver --help`. The following parameters are mandatory: 
+
+* The path to your `sqlwbconsole` executable (`-c`). 
+
+The default port on which the server will listen is 5000. You can change this
+with the `-o` parameter. 
+
+Please note that a server handles only one `sqlwbconsole` instance, which is
+not multi threading, so also the server is not multi-threading. Since a
+command sent to a DBMS through `sqlwbconsole` cannot be interrupted, there is
+no reason to have `sqlwbserver` working multi-threading. A new command will
+have to wait anyway for the old one to finish. 
+
+If you want to have several connections to a database, you can open another
+server (run again `sqlwbserver`) on another port. Of course, each server will
+have it's own opened transactions. You cannot do an `update` on a port and a
+`rollback` on the other port. 
+
+Though, when you open a database explorer (which requires a profile), a new
+instance of `sqlwbconsole.sh` will be launched on a different thread. So any
+commands for the database explorer will be run in parallel with any command
+launched from any `vim` buffer connected to the same port. 
+
+*Example*: 
 
 ```
-:SWDbExplorerDirect -url='jdbc:mysql://localhost/mydb' -username=admin
--password=pass -driver=com.mysql.jdbc.Driver<cr>
+`resources/sqlwbconsole -t /tmp -c /usr/bin/sqlwbconsole.sh -o 5000`
 ```
 
-Please note that `SQL Workbench` will require you to specify the driver and
-the url. 
+## Connecting a vim buffer
 
-In the same way, you can open an sql buffer instead of the database explorer: 
+Once you have a server opened, you can connect any vim buffer to that server
+using `SWSqlConnectToServer` command. Once a buffer is connected to a server,
+you can send any command from that buffer to the DBMS using the
+`SWSqlExecuteCurrent`, `SWSqlExecuteSelected` or `SWSqlExecuteAll` commands. 
 
-```
-:SWSqlOpenDirect /tmp/myfile.sql -url='jdbc:mysql://localhost/mydb'
--username=admin -password=pass -driver=com.mysql.jdbc.driver<cr>
-```
+The database explorer
+========================================
 
-If you open a sql buffer this way, you can after execute the `SQL Workbench/J`
-command `WbStoreProfile`. See this
-[page](http://www.sql-workbench.net/manual/console-mode.html) for more info. 
-
-Once in a sql buffer, you can launch any command `SQL Workbench` accepts. 
-
-## Connecting by specifying a profile
+In order to open a database explorer, you need a profile. 
 
 You can create `SQL Workbench` profiles, either by using the `SQL Workbench`
 GUI, like
 [here](http://www.sql-workbench.net/manual/profiles.html#profile-intro),
-either opening a sql buffer with `SWSqlOpenDirect` and then executing
+either opening a sql buffer with `SWSqlConnectToServer` and then executing
 `WbStoreProfile`. 
 
-Once you have your profiles created, you can use `SWDbExplorer` or `SWSqlOpen`
-with the desired profile as argument and you will connect to the database. 
+Once you have your profiles created, you can use `SWDbExplorer` with the
+desired profile as argument and you will connect to the database. 
 
-For example, `:SWDbExplorer myProfile` will open a database explorer using the
-profile `myProfile`. Or `SWSqlOpen myProfile /tmp/myfile.sql` will open the
-file `/tmp/myfile.sql` as an sql buffer. Any command launched from the buffer
-will be using the `myProfile` profile. 
-
-The database explorer
-========================================
+For example, `:SWDbExplorer 5000 myProfile` will open a database explorer
+using the profile `myProfile` and the server which listens on the 5000 port. 
 
 The database explorer is composed from three parts: on the top, there is a
 list of available shortcuts at any moment. On the bottom left, you will see
@@ -242,9 +276,10 @@ The SQL buffer is a normal `vim` buffer from which you can send SQL commands
 to your DBMS and in which you can use the omni completion (&lt;C-x&gt;&lt;C-o&gt;) to have
 intellisense autocompletion. 
 
-In order to open a buffer, you have to call the command `SWSqlOpen`,
-`SWSqlOpenDirect` or `SWSqlConnectToServer`. You can see the parameters of
-each of the commands in the "Commands" chapter. 
+You can connect an opened vim buffer to a server using the
+`SWSqlConnectToServer <port>` command. Or, you can open a buffer which will be
+directly connected to a server by specifying the path to the buffer after the
+port. For example `SWSqlConnectToServer 5000 /tmp/dbms.sql`
 
 Once in an sql buffer, you have several ways to execute commands against your
 DBMS: 
@@ -276,6 +311,23 @@ the `g:sw_shortcuts_sql_results` variable are loaded. If the variable is not
 set, then the shortcuts from `resources/shortcuts_sql_results.vim` are loaded.
 If you want further details, please have a look at this file. 
 
+You can also have comment in the format `-- before <command>` on a single
+line. This comments will be parsed by the plugin. If the command begins with a
+`:` it will be interpreted as a `vim` command and executed by vim. Otherwise,
+the command will be sent to the DBMS when opening the file.
+
+Examples: 
+
+`-- before :SWSqlAutocompleteLoad <file>`
+
+This command will load the intellisense autocomplete options saved in with
+`SWSqlAutocompletePersist <file>`. 
+
+`-- before start transaction;`
+
+This command will be sent to the DBMS and will start a new transaction every
+time when you open this buffer. 
+
 ## Execute the current statement
 
 As stated already, you can press `ctrl + space` in normal or insert mode or
@@ -286,7 +338,12 @@ The statement between the last 2 delimiters will be sent to the server, or
 from the beginning of the file until the first delimiter, or from the last
 delimiter to the end of the file, depending on where your cursor is placed. 
 
-You can change the default delimiter with the `SWSqlDelimiter`. 
+By default, if you execute `SWSqlExecuteCurrent`, vim will wait for the result
+before continuing. If you don't want to wait for the result, you can execute
+`SWSqlExecuteCurrent!`. 
+
+*Note*: The default shortcut is mapped using `SWSqlExecuteCurrent!`, which
+means that pressing `Ctrl + space` will execute the current command asynchronous. 
 
 ## Execute the selected statement
 
@@ -297,11 +354,18 @@ the visual mode.
 
 The selected text is going to be sent to the DBMS. 
 
+Like before, if you want the command executed asynchronous, you have to use
+the exclamation mark after it (`SWSqlExecuteSelected!`). By default, this is
+mapped on `ctrl + e`. You can change this mapping.
+
 ## Execute all statements
 
 In visual mode, you can press `ctrl + a` or your own custom shortcut.
 Alternatively, you can execute the `SWSqlExecuteAll` command. All the buffer
 is going to be sent to the DBMS. 
+
+Also here you can use an exclamation mark to execute the command asynchronous,
+which is the default mapping. 
 
 ## Intellisense
 
@@ -330,9 +394,11 @@ in which `select` the cursor is placed and execute auto completion for that sql.
 
 As stated before, enabling the auto completion for a buffer can take some
 time. Normally, whenever you execute a `SWSqlAutocomplete`, the data is cached
-on hard drive (in the `g:sw_autocomplete_cache_dir` folder). If you set the
-`g:sw_autocomplete_on_load` option to `1`, then every time you open a buffer
-associated with this profile, the autocomplete will be loaded from the cache. 
+in memory in vim buffer variables. If you want to persist in on the hard
+drive with `SWSqlAutocompletePersist myProfile` command. This will save the
+data on hard drive. Later you can reload it with `SWSqlAutocompleteLoad
+myProfile`. Combined with `-- before` comments in the file, you can have the
+autocomplete loaded every time you open a file. 
 
 If you modify a table then, you can do `SWSqlAutocomplete modified_table`.
 This will be very fast, as it will only load the data for the table. You can
@@ -347,18 +413,19 @@ autocomplete list. For example: `SWSqlAutocomplete -dropped_table`. You can
 combine in the same statement adding and deleting of tables. For example:
 `SWSqlAutocomplete -dropped_table new_table`. 
 
+You can also execute `SWSqlAutocomplete!`. This will reset any autocomplete
+option and will reload again all the tables. 
+
 Unfortunately, the autocomplete for the function and procedures is limited.
 This is because `SQL Workbench/J` does not provide also a list of parameters
 through a `SQL Workbench` command. I can only retrieve the name of the
 function or procedure. Also, the autocomplete for the procedure and functions
 is limited to the `WbCall` command. 
 
-*NOTE*: The autocomplete feature is implemented using regular expressions. I
-preferred this way in order not to introduce any additional dependencies for
-the plugin. Using a grammatic would've mean to use `python` and I think even for
-`python` I would've needed additional libraries. Because of using regular
-expressions, it's possible that I've missed cases. If you notice any case
-where the autocomplete is not working properly, please let me know. 
+*NOTE*: The autocomplete feature is implemented using regular expressions.
+Because of using regular expressions, it's possible that I've missed cases. If
+you notice any case where the autocomplete is not working properly, please let
+me know.
 
 ## Get an object definition
 
@@ -384,26 +451,9 @@ mode.
 
 ## Maximum number of rows. 
 
-You can limit the number of rows returned by a select command with the
-`SWSqlMaxResults` command. The command takes one parameter, which is the
-number of rows. If you want to have again all the results, you can execute
-`SWSqlMaxResults 0`. This will reset the option.
-
-## Execution messages
-
-When you execute a select statement that returns rows, then you will only see
-those rows in the result set. If you have multiple sql statements and some of
-them will return errors, but you have some which will produce results, then
-you will only see those results in the result set. 
-
-In order to see the messages produced by the last sql statement, you can click
-`alt + m` or your own custom shortcut in normal mode in the buffer or in the
-result set buffer. This will hide the result sets and display the messages
-produced by the last command. To have back the result sets, click again the
-same shortcut. 
-
-Alternatively, you can execute the `SWSqlToggleMessages` vim command from
-normal mode. 
+By default, the maximum number of results returned by a select is 5000. You
+can change this with the `set maxrows` command. See
+[here](http://www.sql-workbench.net/manual/wb-commands.html#command-set)
 
 ## Changing result sets display mode
 
@@ -412,13 +462,8 @@ on top of a row. This will toggle the row display to have each column on a row
 for the selected row. To change back the display mode, click again the same 
 shortcut. 
 
-Alternatively, you can execute the `SWSqlToggleFormDisplay` command from
-normal mode inside the result sets buffer on top of a row. 
-
-If you want to have all the results with the columns displayed as rows, you
-can execute `SWSqlDisplayResultsAs record`. After executing this command, all
-the result sets returned will display their columns each on a row. To have
-back the normal display, execute `SWSqlDisplayResultsAs tab`. 
+Alternatively, you can execute the `WbDisplay` command. See
+[here](http://www.sql-workbench.net/manual/console-mode.html) for more detail.
 
 Searching
 ========================================
@@ -493,6 +538,13 @@ command, `WbExport`.
 As usual, you can always execute the `WbExport` command inside a sql buffer.
 To see the full documentation of the `WbExport` command, have a look
 [here](http://www.sql-workbench.net/manual/command-export.html).
+
+*Note*: If you use the wbexport command, you need to send both of the queries
+at once, by selecting both queries (first the `WbExport` query and then the
+exported query) and then running `SWSqlExecuteSelected`. This happens because
+the plugin will send after each statement a silent command to notice vim that
+a new result is waiting. So, if you execute `WbExport`, the exported statement
+will be the silent one which is void and is not a `select` statement. 
 
 Or you can execute the `SWSqlExport` command. This will open an interactive
 input dialog which will ask for the format and the destination file and will
@@ -634,22 +686,15 @@ Commands
 *Parameters*:
 
 * profile name: the name of the profile for which to open the database explorer. 
+* port: the port on which the server listens
 
-Opens a database explorer for the desired profile. 
+Opens a database explorer for the desired profile using the server from the
+specified port. 
 
 *NOTE*: If you set the
 `g:sw_config_dir` variable to point to the `SQL Workbench/J` settings folder,
 the command will autocomplete the profile names. See
 [here](http://www.sql-workbench.net/manual/install.html#config-dir)
-
-## SWDbExplorerDirect
-
-*Parameters*:
-
-* the same arguments that `SQL Workbench/J` takes for connections. See
-  [here](http://www.sql-workbench.net/manual/install.html#commandline)
-
-Opens a database explorer using a direct connection. 
 
 ## SWDbExplorerClose
 
@@ -669,54 +714,6 @@ the indicated profile is closed.
 
 After a session restore, this command will restore an opened database panel
 
-## SWSqlBufferSetProfile
-
-*Parameters*: 
-
-* profile name: the name of the profile for which to open the sql buffer.
-
-Attaches a profile to an already opened vim buffer. This means that you can
-open a normal vim buffer (`e /tmp/my_file.sql`) and then attach an `SQL
-Workbench/J` profile to it. After this, the buffer will become a
-`vim-sqlworkbench` buffer and you will be able to send sql statements to the
-selected DBMS.
-
-*NOTE*: If you set the
-`g:sw_config_dir` variable to point to the `SQL Workbench/J` settings folder,
-the command will autocomplete the profile names. See
-[here](http://www.sql-workbench.net/manual/install.html#config-dir)
-
-## SWSqlOpen
-
-*Parameters*:
-
-* profile name: the name of the profile for which to open the sql buffer.
-* file name: the name of the file to open. 
-
-Opens a buffer as a sql buffer. It supports autocomplete for both parameters:
-a `SQL Workbench/J` profile name for the first parameter (see the note) and
-the system files for the second parameter.
-
-*NOTE*: If you set the
-`g:sw_config_dir` variable to point to the `SQL Workbench/J` settings folder,
-the command will autocomplete the profile names. See
-[here](http://www.sql-workbench.net/manual/install.html#config-dir)
-
-## SWSqlOpenDirect
-
-*Parameters*:
-
-* file name: the name of the file to open as sql buffer
-* the same arguments that `SQL Workbench/J` takes for connections. See
-  [here](http://www.sql-workbench.net/manual/install.html#commandline)
-
-The first argument has to be a buffer name. The next arguments are the
-arguments for the connection. 
-
-This commands opens a sql buffer using parameters for the connections. Once
-connected, you can execute the `WbStoreProfile` command to also store the 
-profile. 
-
 ## SWSqlExecuteCurrent
 
 In an sql buffer executes the current statement. You can execute this command
@@ -734,104 +731,12 @@ in visual mode. Be careful to delete the range before typing the command.
 
 Send all sql statements from the buffer to the DBMS. 
 
-## SWSqlDisplayResultsAs
-
-*Parameters*: 
-
-* display type: `tab|record`. 
-
-If you want to have each column display in a row, you can select the display
-as `record`. Otherwise, for normal display (tabbed, with rows and columns) use
-`tab` display mode. 
-
-## SWSqlMaxResults
-
-*Parameters*:
-
-* n: the maximum number of records to be displayed. 
-
-This commands set in a sql buffer, the maximum number of rows that will be
-retrieved when executing a sql which returns results. If you want to only
-retrieve 10 records for the next command, you can type `set maxrows = 10`
-before your statement, select the `maxrows` statement together with your
-statement and execute with `SWSqlExecuteSelected`. 
-
-By default, all rows are returned. If you set a different number of rows via
-this command and the you want again all the results, you can run
-`SWSqlMaxResults 0`. 
-
-## SWSqlDelimiter
-
-*Parameters*:
-
-* delimiter: the new delimiter. 
-
-This command changes the default delimiter. Please note that if you run this
-command, also the `SWSqlExecuteCurrent` statement will take it under
-consideration. This means, that the current sql will be calculated using this
-delimiter. 
-
-Usually a delimiter is changed when you want to create a stored procedure or
-function or a trigger or something similar. If you just want to execute one
-statement with a different delimiter, you can just type, your statement using
-`/` as delimiter, select it and send it to the DBMS. `SQL Workbench` will know
-how to handle is. 
-
-For example: 
-
-```
-create procedure my_procedure()
-begin
-    select * from products;
-end;
-/
-```
-
-If you select this statement and click `ctrl + e` or your own custom shortcut
-for executing the selected statement, it will work even if your normal
-delimiter is ";". To use an alternate delimiter, you have to have the
-delimiter alone on its own line. 
-
-## SWSqlAbortOnErrors
-
-*Parameters*:
-
-* number: 1|0.
-
-If you set this option, then when executing more than one statement at a time,
-the execution will stop at the first error. Otherwise, the execution will
-continue until the last statement. By default this is set to false. 
-
-See more
-[here](http://www.sql-workbench.net/manual/using-scripting.html#scripting-handling-errors)
-
-## SWSqlShowFeedback
-
-*Parameters*:
-
-* number: 1|0
-
-If you set this option to true, then when executing statements you will get
-the full output of the `SQL Workbench` in the messages window (see
-`SWSqlToggleMessages`), like the execution time. Otherwise, you will only get
-output if you have an error. 
-
-For more explanation, see
-[here](http://www.sql-workbench.net/manual/using-scripting.html#script-display)
-
 ## SWSqlToggleMessages
 
 If you have a result set displayed in the result set buffer, you can toggle
 between the result displayed and the messages produced by the command with
 this command. The command works from the sql buffer and from the result set 
 buffer.
-
-## SWSqlToggleFormDisplay
-
-If you have a result set displayed, in the result set buffer you can move your
-cursor on top of a row from the result set. By calling this command, the
-columns will be displayed each on a row. To switch back, call again the same
-command. 
 
 ## SWSqlObjectInfo
 
@@ -951,10 +856,6 @@ This command will restore the properties of the sql buffer following a vim
 session restore. This includes the autocomplete intellisense of the buffer, if
 this was active when `mksession` was executed. 
 
-## SWKillCurrentCommand
-
-This command will kill the current command being executed in asynchronous mode. 
-
 ## SWVarSet
 
 *Parameters*:
@@ -1011,10 +912,11 @@ console mode will be closed.
 *Parameters*: 
 
 * port: the port of the server
-* file name: the name of the file to open. 
+* file name (optional): the name of the file to open. 
 
 This will open a new buffer which will be connected to an existing
-`sqlwbconsole` server. 
+`sqlwbconsole` server. If the file name is not specified, then it will connect
+the current buffer to the server on the specified port. 
 
 Settings
 ========================================
@@ -1064,27 +966,13 @@ and
 
 ## Sql buffer settings: 
 
-* `g:sw_feedback`: if set to true, then return all the possible feedback from
-  a command; default value: 1
-* `g:sw_abort_on_errors`: if set to true, then abort the execution of the
-  statements on the first error (this is valid only when sending more than one
-  statement for execution in one go); default value: 1
-* `g:sw_display_result_as`: how to display the result sets (tabbed or each
-  column on a row); possible values: tab|record; default value: "tab", which
-  means tabbed layout
-* `g:sw_max_results`: the maximum number of rows to be returned in a result
-  set; default value: 0, which means all the rows
-* `g:sw_delimiter`: the delimiter to be used in a sql buffer; default value:
-  ";"
-* `g:sw_sqlopen_command`: the vim command used by `SWSqlOpen` or
-  `SWSqlOpenDirect` commands to open a buffer; possible values: `e|tabnew`;
-  default value: "e", which means open with vim `edit` command
+* `g:sw_sqlopen_command`: the vim command used by `SWSqlConnectToServer`
+  command to open a buffer; possible values: `e|tabnew`; default value: "e",
+  which means open with vim `edit` command
 * `g:sw_tab_switches_between_bottom_panels`: if set to true, then clicking tab
   in a db explorer will switch between the bottom panels
 * `g:sw_autocomplete_cache_dir`: the location where the autocomplete
   information is saved. You'll need to set it on Windows to work. 
-* `g:sw_autocomplete_on_load`: if true, then when a buffer is opened, the
-  autocomplete information will be loaded if it's already cached on hard drive. 
 
 ## Database explorer settings
 
@@ -1093,12 +981,6 @@ and
 
 ## General settings:
 
-* `g:sw_show_shell_output`: whether or not to show the shell output after
-  sending a sql statement to the DBMS; default value: 0
-* `g:sw_show_command`: whether or not to show the sql command in the results
-  buffer; default value: 0 (please note that this will also affect the
-  database explorer, which means that you will have the sql commands also in
-  the bottom left and bottom right panels)
 * `g:sw_exe`: the location of the `SQL Workbench` executable; default value:
   "sqlwbconsole.sh"
 * `g:sw_tmp`: the location of your temporary folder; default value: "/tmp"
@@ -1109,107 +991,6 @@ and
 * `g:sw_delete_tmp`: if true, then delete the temporary files created to
   execute any command. Useful for debugging. You can set it to 0 and check all
   the generated files
-
-Transactions
-========================================
-
-The `sql vim workbench` plugin uses `SQL Workbench/J` batch mode to send
-commands to the DBMS. See
-[here](http://www.sql-workbench.net/manual/using-scripting.html). This means
-that every time you send a statement, a connection to the database is opened,
-the statement is sent and then the connection is closed. So, it's obviously
-that a transaction will be ended after the statement is sent. 
-
-Starting with version `2.0` of the plugin, is it possible to also use the
-[console mode of `SQL
-Workbench/J`](http://www.sql-workbench.net/manual/console-mode.html). 
-
-## Requirements
-
-* `Vim` compiled with `python` supported
-* `Python` installed on the machine
-* `SQL Workbench/J` and the `vim` instance with which it communicates to be
-  installed on the same machine
-* Optional: [`vim dispatch`](https://github.com/tpope/vim-dispatch) plugin
-  installed.
-* `VIM` started in server mode
-
-In order to use the transactions, you need to use the server mode of the
-plugin. For this you need a permanent `SQL workbench/j` instance in memory.
-This is done starting the `resources/sqlwbconsole` `python` script. This will
-start an instance of `SQL Workbench/J` in console mode and then will start a
-server listening on the indicated port. Every time when you connect to that
-port, you can send a command to the `SQL Workbench/J` instance. 
-
-Basically the plugin will connect to this port (using a `python` function,
-thus the need to have `vim` compiled with `python` support), will send the
-command and it will indicate to the server where it will wait for the result. 
-
-The `resources/sqlwbconsole` script will send the command to `SQL
-Workbench/J`, get its output and send it back to vim. 
-
-There are two ways to start a permanent connection: 
-
-## Opening a permanent connection automatically
-
-For this you need to have the `vim dispatch` plugin installed. If you want to
-start a new permanent connection from `vim`, you can call the command
-`SWServerStart` with the port on which the server will listen. Also, you can
-choose a profile for the new connection. If you don't choose a profile now,
-you will have to execute `WbConnect` in order to connect to a database. 
-
-Please note that having a permanent connection, you can also do `WBConnect` to
-change the connection. See
-[here](http://www.sql-workbench.net/manual/wb-commands.html#command-connect)
-for more informations. 
-
-For example: `SWServerStart 5000`. 
-
-## Opening a permanent connection manually
-
-If you don't want or you can't install the `vim dispatch` plugin, you can
-always open a permanent connection manually. From your terminal, you need to
-run the `resources/sqlwbconsole` script. For a list of parameters you can do
-`resources/sqlwbconsole --help`. The following parameters are mandatory: 
-
-* The temporary folder (`-t`). Please note that this should be identical with
-  `g:sw_tmp`
-* The vim server name (`-s`). You can get this by doing `:echo v:servername`
-  in your `vim`
-* The path to your `sqlwbconsole` executable (`-c`). 
-* The port on which to listen (`-o`)
-
-*Example*: 
-
-```
-`resources/sqlwbconsole -t /tmp -s VIM -c /usr/bin/sqlwbconsole.sh -o 5000`
-```
-
-You can also use the `-p` parameter, to also connect to a database. Otherwise,
-after you connect with a buffer, you will need to do `WbConnect`. 
-
-If you don't want to use this way of sending commands, you can at any time run
-the `SWSqlBufferSetProfile` command to switch to the batch mode. 
-
-## Misc. 
-
-Please note that the server is not multi-threading. This means that only a
-command is executed at a time, even if you connect from 2 buffers to the same
-instance. This is because a server only handles one `SQL Workbench/J` instance
-at a time, and that can only execute one command at a time. 
-
-If you want to execute commands in parallel for the same profile, you need to
-create two profiles with the same preferences, then spawn servers for each of
-these profiles and connect each buffer to each of these servers. 
-
-*NOTE*:
-
-This is not tested at all at the moment, so consider this feature `pre alpha`.
-I will begin testing it in the following days, and as soon as I will discover
-bugs, I will fix them and eliminate this note when it will become more stable. 
-
-Also, please note, if you start the server manually, that you need to first
-start `vim` and then the server. 
 
 Screen shots
 ========================================

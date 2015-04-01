@@ -24,16 +24,6 @@ let s:pattern_subquery = '\v#sq([0-9]+)#'
 let s:script_path = expand('<sfile>:p:h') . '/../../'
 let s:pattern_expressions = '\v\c\(([\s\t ]*select)@![^\(\)]{-}\)'
 
-function! s:tbl_cache_file()
-    let profile = substitute(b:profile, '\v\c^!#', '', 'g')
-    return g:sw_autocomplete_cache_dir . '/' . profile . '_tbl.vim'
-endfunction
-
-function! s:proc_cache_file()
-    let profile = substitute(b:profile, '\v\c^!#', '', 'g')
-    return g:sw_autocomplete_cache_dir . '/' . profile . '_proc.vim'
-endfunction
-
 function! s:eliminate_sql_comments(sql)
     let sql = sw#get_sql_canonical(a:sql)[0]
     let sql = substitute(sql, '\v--.{-}#NEWLINE#', '#NEWLINE#', 'g')
@@ -137,70 +127,61 @@ function! s:deprecated(name, alternative)
     echomsg a:alternative
 endfunction
 
-function! sw#autocomplete#set_cache_default()
-    call s:deprecated('SWSqlAutocompleteSetDefault', "Use instead the g:sw_autocomplete_on_load option")
-    call sw#autocomplete#cache()
-    if sw#is_async()
-        let b:__set_default = 1
-    else
-        call s:set_default()
-    endif
-endfunction
-
 function! sw#autocomplete#got_result()
-    ""if !filereadable(g:sw_tmp . "/sw_report.xml")
-    ""    throw "There is a problem clearing the autocomplete cache. Please check your connection"
-    ""endif
-
-    if exists('s:current_profile')
-        let lines = readfile(s:tbl_cache_file())
-        for line in lines
-            if !(line =~ '\c\v^[ \s\t]*let[ \s\t]+g:tables[ \s\t]+\=[ \s\t]*\{\}')
-                call add(s:current_profile, line)
-            endif
-        endfor
-        call writefile(s:current_profile, s:tbl_cache_file())
-        unlet s:current_profile
+    call sw#session#init_section()
+    if exists('b:autocomplete_clear') || !exists('b:autocomplete_tables')
+        call sw#session#set_buffer_variable('autocomplete_procs', {})
+        call sw#session#set_buffer_variable('autocomplete_tables', {})
     endif
-
-    let nocompl = 1
-    if filereadable(s:tbl_cache_file())
-        call s:execute_file(s:tbl_cache_file())
-        call sw#session#set_buffer_variable('autocomplete_tables', g:tables)
-        let nocompl = 0
+    if filereadable(g:sw_tmp . "/sw_report_tbl.vim")
+        call s:execute_file(g:sw_tmp . "/sw_report_tbl.vim")
+        call sw#session#set_buffer_variable('autocomplete_tables', b:autocomplete_tables)
     endif
-    if filereadable(s:proc_cache_file())
-        call s:execute_file(s:proc_cache_file())
-        call sw#session#set_buffer_variable('autocomplete_procs', g:_procedures)
-        unlet g:_procedures
-        let nocompl = 0
+    if filereadable(g:sw_tmp . "/sw_report_proc.vim")
+        call s:execute_file(g:sw_tmp . "/sw_report_proc.vim")
+        call sw#session#set_buffer_variable('autocomplete_procs', b:autocomplete_procs)
     endif
-    if !nocompl
-        setlocal omnifunc=sw#autocomplete#perform
-        if exists('b:__set_default')
-            call s:set_default()
-            unlet b:__set_default
-        endif
-    endif
+    setlocal omnifunc=sw#autocomplete#perform
+    unlet b:autocomplete_clear
+    call sw#sqlwindow#check_results()
 	echomsg "Autocomplete activated"
 endfunction
 
 function! sw#autocomplete#remove_table_from_cache(tbl)
-    if filereadable(s:tbl_cache_file())
-        let lines = readfile(s:tbl_cache_file())
-        let result = []
-        for line in lines
-            if !(line =~ '\v\c^[\s\t ]*let[\s\t ]+g:tables[ \s\t]*\[''(T|V)#' . a:tbl)
-                call add(result, line)
+    if exists('b:autocomplete_tables')
+        for key in keys(b:autocomplete_tables)
+            if tolower(key) =~ '\v\c^(v|t)#' . a:tbl
+                unlet b:autocomplete_tables[key]
+                break
             endif
         endfor
-
-        call writefile(result, s:tbl_cache_file())
+        call sw#session#set_buffer_variable('autocomplete_tables', b:autocomplete_tables)
     endif
 endfunction
 
-function! sw#autocomplete#cache(...)
-    if (!exists('b:profile'))
+function! sw#autocomplete#persist(name)
+    let lines = ['let b:autocomplete_tables = {}']
+    call add(lines, 'let b:autocomplete_procs = {}')
+    if exists('b:autocomplete_tables')
+        for key in keys(b:autocomplete_tables)
+            call add(lines, 'let b:autocomplete_tables["' . escape(key, '"') . '"] = ' . string(b:autocomplete_tables[key]))
+        endfor
+    endif
+    if exists('b:autocomplete_procs')
+        for key in keys(b:autocomplete_procs)
+            call add(lines, 'let b:autocomplete_procs["' . escape(key, '"') . '"] = ' . string(b:autocomplete_procs[key]))
+        endfor
+    endif
+    call writefile(lines, g:sw_autocomplete_cache_dir . '/' . a:name . '.vim')
+endfunction
+
+function! sw#autocomplete#load(name)
+    call s:execute_file(g:sw_autocomplete_cache_dir . '/' . a:name . '.vim')
+    setlocal omnifunc=sw#autocomplete#perform
+endfunction
+
+function! sw#autocomplete#cache(bang, ...)
+    if (!exists('b:port'))
         return
     endif
     call sw#session#init_section()
@@ -213,33 +194,24 @@ function! sw#autocomplete#cache(...)
             if obj =~ '^-'
                 call sw#autocomplete#remove_table_from_cache(substitute(obj, '^-', '', 'g'))
             else
-                call sw#autocomplete#remove_table_from_cache(obj)
-                let objects = objects . obj
-                if i < a:0
-                    let objects = objects . ','
-                endif
+                let objects = (objects == '' ? '' : ',') . obj
             endif
             let i = i + 1
         endwhile
     endif
 
     if objects == ''
-        call sw#autocomplete#got_result()
         return 
     endif
-    if objects != '%'
-        let s:current_profile = readfile(s:tbl_cache_file())
-    endif
-    let sql = "WbSchemaReport -file=" . g:sw_tmp . "/sw_report.xml -objects=" . objects . " -types='TABLE,VIEW,SYSTEM VIEW,MATERIALIZED VIEW,TEMPORARY TABLE,SYNONYM' -stylesheet=" . s:script_path . "resources/wbreport2vim.xslt -xsltOutput=" . s:tbl_cache_file() . ";\n"
-    let sql = sql . "WbExport -type=xml -file=" . g:sw_tmp . "/sw_procs.xml -stylesheet=" . s:script_path . "resources/wbprocedures2vim.xslt -lineEnding=lf -xsltOutput=" . s:proc_cache_file() . ";\n"
+    let sql = "WbSchemaReport -file=" . g:sw_tmp . "/sw_report.xml -objects=" . objects . " -types='TABLE,VIEW,SYSTEM VIEW,MATERIALIZED VIEW,TEMPORARY TABLE,SYNONYM' -stylesheet=" . s:script_path . "resources/wbreport2vim.xslt -xsltOutput=" . g:sw_tmp . "/sw_report_tbl.vim;\n"
+    let sql = sql . "WbExport -type=xml -file=" . g:sw_tmp . "/sw_procs.xml -stylesheet=" . s:script_path . "resources/wbprocedures2vim.xslt -lineEnding=lf -xsltOutput=" . g:sw_tmp . "/sw_report_proc.vim;\n"
     let sql = sql . "WBListProcs;"
 
     call sw#set_on_async_result('sw#autocomplete#got_result')
-    let result = sw#execute_sql(b:profile, sql)
-	if !sw#is_async()
-        unlet b:on_async_result
-		call sw#autocomplete#got_result()
-	endif
+    if a:bang
+        let b:autocomplete_clear = 1
+    endif
+    let result = sw#execute_sql(sql, 0)
 endfunction
 
 function! s:get_cache_tables()
@@ -326,9 +298,6 @@ endfunction
 
 function! sw#autocomplete#perform(findstart, base)
     " Check that the cache is alright
-    if (!exists('b:profile'))
-        throw 'You can only use this frunction through the sql workbench plugin'
-    endif
     if !exists('b:autocomplete_tables') && !exists('g:sw_autocomplete_default_tables')
         throw "First you have to clear the completion cache to use autocomplete"
     endif
@@ -780,4 +749,17 @@ function! s:get_tables(sql, subqueries)
     endfor
 
     return tables
+endfunction
+
+function! sw#autocomplete#complete_cache_name(ArgLead, CmdLine, CursorPos)
+    let words = split('^' . a:CmdLine, '\v\s+')
+    let files = split(globpath(g:sw_autocomplete_cache_dir, '*'), "\n")
+    let result = []
+    for file in files
+        let f = substitute(file, '\v\c^.*\/([^\/\.]+)\.?.*$', '\1', 'g')
+        if a:CmdLine =~ '\v^' . f || a:CmdLine =~ '\v\s+$'
+            call add(result, f)
+        endif
+    endfor
+    return result
 endfunction

@@ -53,14 +53,6 @@ if !exists('g:sw_search_default_tables')
     let g:sw_search_default_tables = '%'
 endif
 
-if !exists('g:sw_autocomplete_cache_dir')
-    let g:sw_autocomplete_cache_dir = $HOME . '/.cache/sw'
-endif
-
-if !exists('g:sw_autocomplete_on_load')
-    let g:sw_autocomplete_on_load = 1
-endif
-
 if !exists('g:sw_search_default_exclude_tables')
     let g:sw_search_default_exclude_tables = ''
 endif
@@ -77,24 +69,13 @@ if !exists('g:sw_search_default_compare_types')
     let g:sw_search_default_compare_types = 'contains'
 endif
 
-if (!exists('g:sw_feedback'))
-    let g:sw_feedback = 1
+if !exists('g:sw_autocomplete_cache_dir')
+    let g:sw_autocomplete_cache_dir = $HOME . '/.cache/sw'
 endif
 
-if (!exists('g:sw_abort_on_errors'))
-    let g:sw_abort_on_errors = 1
+if (!exists('g:sw_delimiter'))
+    let g:sw_delimiter = ';'
 endif
-
-if (!exists('g:sw_display_result_as'))
-    let g:sw_display_result_as = 'tab'
-endif
-
-if (!exists('g:sw_max_results'))
-    let g:sw_max_results = 0
-endif
- if (!exists('g:sw_delimiter'))
-     let g:sw_delimiter = ';'
- endif
 
 if !exists('g:sw_sqlopen_command')
     let g:sw_sqlopen_command = 'e'
@@ -104,16 +85,8 @@ if (!exists('g:sw_default_right_panel_type'))
     let g:sw_default_right_panel_type = 'txt'
 endif
 
-if (!exists('g:sw_show_shell_output'))
-    let g:sw_show_shell_output = 0
-endif
-
 if (!exists('g:sw_open_export'))
     let g:sw_open_export = 'soffice'
-endif
-
-if (!exists('g:sw_show_command'))
-    let g:sw_show_command = 0
 endif
 
 if (!exists('g:sw_exe'))
@@ -148,20 +121,12 @@ if (!exists('g:extra_sw_tabs'))
     let g:extra_sw_tabs = {}
 endif
 
-if (!exists('g:sw_asynchronious'))
-	let g:sw_asynchronious = 0
-endif
-
 if !exists('g:vim_exe')
     let g:sw_vim_exe = 'vim'
 endif
 
 if !exists('g:sw_tab_switches_between_bottom_panels')
 	let g:sw_tab_switches_between_bottom_panels = 1
-endif
-
-if !exists('g:sw_delete_tmp')
-	let g:sw_delete_tmp = 1
 endif
 
 "if !exists('g:sw_overwrite_current_command')
@@ -188,37 +153,28 @@ for _profile in items(g:extra_sw_tabs)
     endfor
 endfor
 
-command! -nargs=1 -complete=customlist,sw#autocomplete_profile SWDbExplorer call sw#dbexplorer#show_panel(<f-args>)
-command! -nargs=+ SWDbExplorerDirect call sw#dbexplorer#show_panel_no_profile(<f-args>)
+command! -nargs=+ -complete=customlist,sw#autocomplete_profile SWDbExplorer call sw#dbexplorer#show_panel(<f-args>)
 command! -nargs=? SWDbExplorerClose call sw#dbexplorer#hide_panel(<f-args>)
 command! SWDbExplorerRestore call sw#session#restore_dbexplorer()
-command! -nargs=1 -complete=customlist,sw#autocomplete_profile SWSqlBufferSetProfile call sw#sqlwindow#open_buffer(<f-args>, bufname('%'), 'e')
-command! -nargs=+ -complete=customlist,sw#autocomplete_profile_for_buffer SWSqlOpen call sw#sqlwindow#open_buffer(<f-args>, g:sw_sqlopen_command)
-command! -nargs=+ -complete=file SWSqlOpenDirect call sw#sqlwindow#open_buffer_no_profile(<f-args>)
-command! SWSqlExecuteCurrent call sw#sqlwindow#execute_sql(sw#sqlwindow#extract_current_sql())
-command! SWSqlExecuteSelected call sw#sqlwindow#execute_sql(sw#sqlwindow#extract_selected_sql())
-command! SWSqlExecuteAll call sw#sqlwindow#execute_sql(sw#sqlwindow#extract_all_sql())
-command! -nargs=1 -complete=customlist,sw#sqlwindow#display_options SWSqlDisplayResultsAs call sw#sqlwindow#set_display(<f-args>)
-command! -nargs=1 SWSqlMaxResults call sw#sqlwindow#set_max_rows(<f-args>)
-command! -nargs=1 SWSqlDelimiter call sw#sqlwindow#set_delimiter(<f-args>)
-command! -nargs=1 SWSqlAbortOnErrors call sw#sqlwindow#set_abort_on_errors(<f-args>)
-command! -nargs=1 SWSqlShowFeedback call sw#sqlwindow#set_feedback(<f-args>)
+command! -nargs=+ -complete=file SWSqlConnectToServer call sw#server#connect_buffer(<f-args>, g:sw_sqlopen_command)
+command! -bang SWSqlExecuteCurrent call sw#sqlwindow#execute_sql(<bang>1, sw#sqlwindow#extract_current_sql())
+command! -bang SWSqlExecuteSelected call sw#sqlwindow#execute_sql(<bang>1, sw#sqlwindow#extract_selected_sql())
+command! -bang SWSqlExecuteAll call sw#sqlwindow#execute_sql(<bang>1, sw#sqlwindow#extract_all_sql())
 command! SWSqlToggleMessages call sw#sqlwindow#toggle_messages()
 command! SWSqlToggleFormDisplay call sw#sqlwindow#toggle_display()
 command! SWSqlObjectInfo call sw#sqlwindow#get_object_info()
 command! SWSqlObjectSource call sw#sqlwindow#get_object_source()
 command! SWSqlExport call sw#sqlwindow#export_last()
-command! -nargs=+ SWSearchObject call sw#search#object(<f-args>)
-command! SWSearchObjectAdvanced call sw#search#object()
-command! -nargs=1 SWSearchObjectDefaults call sw#search#object_defaults(<f-args>)
-command! -nargs=+ SWSearchData call sw#search#data(<f-args>)
-command! SWSearchDataAdvanced call sw#search#data()
-command! -nargs=1 SWSearchDataDefaults call sw#search#data_defaults(<f-args>)
-command! -nargs=* SWSqlAutocomplete call sw#autocomplete#cache(<f-args>)
-command! SWSqlAutocompleteSetDefault call sw#autocomplete#set_cache_default()
-command! SWSqlAutocompleteWithDefault setlocal omnifunc=sw#autocomplete#perform
+command! -bang -nargs=+ SWSearchObject call sw#search#object(<bang>1, <f-args>)
+command! -bang SWSearchObjectAdvanced call sw#search#object(<bang>1)
+command! -bang -nargs=1 SWSearchObjectDefaults call sw#search#object_defaults(<bang>1, <f-args>)
+command! -bang -nargs=+ SWSearchData call sw#search#data(<bang>1, <f-args>)
+command! -bang SWSearchDataAdvanced call sw#search#data(<bang>1)
+command! -bang -nargs=1 SWSearchDataDefaults call sw#search#data_defaults(<bang>1, <f-args>)
+command! -bang -nargs=* SWSqlAutocomplete call sw#autocomplete#cache(<bang>0, <f-args>)
+command! -nargs=1 -complete=customlist,sw#autocomplete#complete_cache_name SWSqlAutocompleteLoad call sw#autocomplete#load(<f-args>)
+command! -nargs=1 -complete=customlist,sw#autocomplete#complete_cache_name SWSqlAutocompletePersist call sw#autocomplete#persist(<f-args>)
 command! SWSqlBufferRestore call sw#session#restore_sqlbuffer()
-command! -nargs=0 SWKillCurrentCommand call sw#kill_current_command()
 
 command! -nargs=+ -complete=customlist,sw#variables#autocomplete_names SWVarSet call sw#variables#set(<f-args>, '')
 command! -nargs=1 -complete=customlist,sw#variables#autocomplete_names SWVarUnset call sw#variables#unset(<f-args>)
@@ -228,7 +184,6 @@ command! -nargs=0 SWVarList call sw#variables#list()
 
 command! -nargs=+ -complete=customlist,sw#autocomplete_profile SWServerStart call sw#server#run(<f-args>)
 command! -nargs=1 SWServerStop call sw#server#stop(<f-args>)
-command! -nargs=+ -complete=file SWSqlConnectToServer call sw#server#connect_buffer(<f-args>, g:sw_sqlopen_command)
 
 augroup sw
 autocmd sw BufDelete,BufWipeout * call sw#session#sync()

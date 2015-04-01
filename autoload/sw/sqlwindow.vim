@@ -22,7 +22,7 @@ let s:pattern_empty_line = '\v^[\r \s\t]*$'
 let s:script_path = expand('<sfile>:p:h') . '/../../'
 
 function! s:check_sql_buffer()
-    if (!exists('b:profile'))
+    if (!exists('b:port'))
         throw "The current buffer is not an SQL Workbench buffer. Open it using the SWOpenSQL command."
     endif
 endfunction
@@ -66,76 +66,52 @@ function! sw#sqlwindow#hide_results()
     endwhile
 endfunction
 
-function! s:do_open_buffer()
-    call sw#session#set_buffer_variable('display_result_as', g:sw_display_result_as)
-    call sw#session#set_buffer_variable('max_results', g:sw_max_results)
-    call sw#session#set_buffer_variable('delimiter', g:sw_delimiter)
-    call sw#session#set_buffer_variable('abort_on_errors', g:sw_abort_on_errors)
-    call sw#session#set_buffer_variable('feedback', g:sw_feedback)
-    call sw#session#set_buffer_variable('unique_id', sw#generate_unique_id())
-    call sw#session#unset_buffer_variable('port')
-    call sw#session#autocommand('BufEnter', 'sw#sqlwindow#set_statement_shortcuts()')
-    call sw#session#autocommand('BufEnter', 'sw#check_async_result()')
-    call sw#sqlwindow#set_statement_shortcuts()
-    if g:sw_autocomplete_on_load
-        call sw#autocomplete#got_result()
+function! sw#sqlwindow#check_results()
+    let results = sw#server#fetch_result()
+    if results != ''
+        call s:process_result(results)
     endif
-    ""normal gg
-    ""put ='-- Current profile: ' . b:profile
 endfunction
 
-function! sw#sqlwindow#open_buffer(profile, file, command)
-    execute a:command . " " . a:file
-    call sw#session#init_section()
-    call sw#session#set_buffer_variable('profile', a:profile)
-    call s:do_open_buffer()
-endfunction
-
-function! sw#sqlwindow#open_buffer_no_profile(...)
-    if !a:0
-        throw "You need to supply at least the file name"
-    endif
-    call sw#session#init_section(a:1)
-    execute g:sw_sqlopen_command . " " . a:1
-    let i = 2
-    call sw#session#set_buffer_variable('connection', '')
-    while i <= a:0
-        let cmd = "let arg = a:" . i
-        execute cmd
-        call sw#session#set_buffer_variable('connection', b:connection . ' ' . arg)
+function! sw#sqlwindow#auto_commands(when)
+    let i = 1
+    let pattern = '\v\c^-- ' . a:when . '[ \t]*(.*)$'
+    let sql = ''
+    while i < line('$')
+        let line = getline(i)
+        if line =~ pattern
+            let command = substitute(line, pattern, '\1', 'g')
+            if command =~ '\v\c^:'
+                execute substitute(command, '\v\c^:', '', 'g')
+            else
+                let sql = sql . (sql == '' ? '' : ";\n") . command
+            endif
+        endif
         let i = i + 1
     endwhile
 
-    call sw#session#set_buffer_variable('profile', '__no__' . sw#generate_unique_id())
-    call s:do_open_buffer()
+    if sql != ''
+        echomsg "Executing automatic commands"
+        call sw#sqlwindow#execute_sql(0, sql)
+    endif
 endfunction
 
-function! sw#sqlwindow#display_options(a1, a2, a3)
-    let options = ['tab', 'record']
-    let result = []
-
-    for option in options
-        if option =~ '^' . a:a1
-            call add(result, option)
-        endif
-    endfor
-
-    return result
+function! s:do_open_buffer(port)
+    call sw#session#set_buffer_variable('delimiter', g:sw_delimiter)
+    call sw#session#set_buffer_variable('unique_id', sw#generate_unique_id())
+    call sw#session#set_buffer_variable('port', a:port)
+    ""call sw#session#autocommand('BufEnter', 'sw#sqlwindow#set_statement_shortcuts()')
+    call sw#session#autocommand('BufEnter', 'sw#sqlwindow#check_results()')
+    ""call sw#session#autocommand('BufUnload', 'sw#sqlwindow#auto_commands("after")')
+    call sw#sqlwindow#set_statement_shortcuts()
+    call sw#sqlwindow#auto_commands('before')
 endfunction
 
-function! sw#sqlwindow#set_display(what)
-    call s:check_sql_buffer()
-    call sw#session#set_buffer_variable('display_result_as', a:what)
-endfunction
-
-function! sw#sqlwindow#set_max_rows(n)
-    call s:check_sql_buffer()
-    call sw#session#set_buffer_variable('max_results', a:n)
-endfunction
-
-function! sw#sqlwindow#set_abort_on_errors(what)
-    call s:check_sql_buffer()
-    call sw#session#set_buffer_variable('abort_on_errors', a:what)
+function! sw#sqlwindow#open_buffer(port, file, command)
+    execute a:command . " " . a:file
+    call sw#session#init_section()
+    call sw#session#set_buffer_variable('port', a:port)
+    call s:do_open_buffer(a:port)
 endfunction
 
 function! sw#sqlwindow#set_delimiter(new_del)
@@ -146,13 +122,8 @@ function! sw#sqlwindow#set_delimiter(new_del)
     call sw#session#set_buffer_variable('delimiter', a:new_del)
 endfunction
 
-function! sw#sqlwindow#set_feedback(what)
-    call s:check_sql_buffer()
-    call sw#session#set_buffer_variable('feedback', a:what)
-endfunction
-
 function! sw#sqlwindow#export_last()
-    call sw#export_ods(b:profile, g:sw_last_sql_query)
+    call sw#export_ods(g:sw_last_sql_query)
 endfunction
 
 function! sw#sqlwindow#extract_current_sql(...)
@@ -408,10 +379,9 @@ function! s:display_resultsets()
 endfunction
 
 function! s:process_result(result)
-    let result = a:result
+    let result = split(a:result, "\n")
     let uid = b:unique_id
     let name = sw#sqlwindow#get_resultset_name()
-    let profile = b:profile
 
     if (bufexists(name))
         call sw#goto_window(name)
@@ -423,10 +393,10 @@ function! s:process_result(result)
         set splitbelow
         execute "split " . name
         call sw#session#init_section()
-        call sw#set_special_buffer(profile)
+        call sw#set_special_buffer()
         call sw#sqlwindow#set_results_shortcuts()
         call sw#session#set_buffer_variable('r_unique_id', uid)
-        call sw#session#autocommand('BufEnter', 'sw#sqlwindow#set_results_shortcuts()')
+        ""call sw#session#autocommand('BufEnter', 'sw#sqlwindow#set_results_shortcuts()')
         setlocal modifiable
         if !s_below
             set nosplitbelow
@@ -443,34 +413,21 @@ function! s:process_result(result)
     call sw#session#set_buffer_variable('resultsets', [])
 
     let i = 0
-    let n = -1
     let mode = 'message'
-    let pattern = '\v\c^\(([0-9]+) row[s]?\)$'
+    let pattern = '\v\c^[\=]+$'
     while i < len(result)
-        if (i + 1 < len(result))
-            if result[i + 1] =~ s:pattern_resultset_start
-                let mode = 'resultset'
-                let n = len(b:resultsets)
-                call add(b:resultsets, '')
-            endif
+        if result[i] =~ pattern
+            let mode = 'resultset'
         endif
         
         if (mode == 'resultset' && (result[i] =~ s:pattern_empty_line || result[i] == ''))
             let mode = 'message'
             call add(b:resultsets, '')
         endif
-        if (mode == 'resultset')
+        if (mode == 'resultset' && !(result[i] =~ pattern))
             call add(b:resultsets, result[i])
         elseif mode == 'message'
             call add(b:messages, substitute(result[i], "\r", '', 'g'))
-            if result[i] =~ pattern
-                if (n != -1)
-                    let rows = substitute(result[i], pattern, '\1', 'g')
-                    let b:resultsets[n] = 'Query returned ' . rows . ' rows'
-                    call sw#session#set_buffer_variable('resultsets', b:resultsets)
-                    let n = -1
-                endif
-            endif
         endif
         let i = i + 1
     endwhile
@@ -493,29 +450,12 @@ function! s:process_result(result)
     endif
 endfunction
 
-function! sw#sqlwindow#on_async_result()
-    let result = sw#get_sql_result(0)
-    call s:process_result(result)
-    ""call feedkeys(':echo ')
-endfunction
-
-function! sw#sqlwindow#on_async_kill()
-    let result = ['Interrupted asynchronious command...']
-    call s:process_result(result)
-endfunction
-
-function! sw#sqlwindow#execute_sql(sql)
+function! sw#sqlwindow#execute_sql(wait_result, sql)
     let w:auto_added1 = "-- auto\n"
     let w:auto_added2 = "-- end auto\n"
 
     call s:check_sql_buffer()
     let _sql = a:sql
-    if (b:display_result_as != 'tab')
-        let _sql = w:auto_added1 . 'WbDisplay ' . b:display_result_as . "\n" . b:delimiter . "\n" . w:auto_added2 . _sql
-    endif
-    if (b:max_results != 0)
-        let _sql = w:auto_added1 . 'set maxrows = ' . b:max_results . "\n" . b:delimiter . "\n" . w:auto_added2 . _sql
-    endif
     if !exists('b:no_variables')
         let vars = sw#variables#extract(_sql)
         if len(vars) > 0
@@ -527,39 +467,29 @@ function! sw#sqlwindow#execute_sql(sql)
             endfor
         endif
     endif
-    call sw#set_on_async_result('sw#sqlwindow#on_async_result')
-    let b:on_async_kill = 'sw#sqlwindow#on_async_kill'
-    let result = sw#execute_sql(b:profile, _sql, 0)
+    let b:on_async_result = 'sw#sqlwindow#check_results'
+    echomsg "Processing a command. Please wait..."
+    let result = sw#execute_sql(_sql, a:wait_result)
 
-    if len(result) != 0
-        unlet b:on_async_result
-        unlet b:on_async_kill
+    if result != ''
         call s:process_result(result)
-    else
-        if sw#is_async()
-            if (exists('b:port'))
-                echomsg "Processing a command. Please wait..."
-            else
-                call s:process_result(['Processing a command. Please wait...'])
-            endif
-        endif
     endif
 endfunction
 
 function! sw#sqlwindow#get_object_info()
-    if (!exists('b:profile'))
+    if (!exists('b:port'))
         return
     endif
 
     let obj = expand('<cword>')
     let sql = "desc " . obj
     call sw#sqlwindow#goto_statement_buffer()
-    call sw#sqlwindow#execute_sql(sql)
+    call sw#sqlwindow#execute_sql(0, sql)
 endfunction
 
 function! sw#sqlwindow#get_resultset_name()
-    if exists('b:profile') && exists('b:unique_id')
-        return '__SQLResult__-' . sw#get_sw_profile() . '__' . b:unique_id
+    if exists('b:unique_id')
+        return '__SQLResult__-' . b:unique_id
     endif
     return ''
 endfunction
@@ -570,10 +500,7 @@ function! sw#sqlwindow#close_all_result_sets()
     endif
     if exists('g:sw_session')
         let name = bufname('%')
-        let rs_name = ''
-        if exists('b:profile')
-            let rs_name = sw#sqlwindow#get_resultset_name()
-        endif
+        let rs_name = sw#sqlwindow#get_resultset_name()
         for k in keys(g:sw_session)
             if k =~ '\v^__SQLResult__' && k != rs_name
                 if bufwinnr(k) != -1
@@ -601,9 +528,9 @@ function! sw#sqlwindow#check_hidden_results()
                     execute "split " . name
                     call sw#session#reload_from_cache()
                     call sw#session#unset_buffer_variable('hidden')
-                    call sw#set_special_buffer(b:profile)
+                    call sw#set_special_buffer()
                     call sw#sqlwindow#set_results_shortcuts()
-                    call sw#session#autocommand('BufEnter', 'sw#sqlwindow#set_results_shortcuts()')
+                    ""call sw#session#autocommand('BufEnter', 'sw#sqlwindow#set_results_shortcuts()')
                     setlocal modifiable
                     if !s_below
                         set nosplitbelow
@@ -625,12 +552,12 @@ function! sw#sqlwindow#check_hidden_results()
 endfunction
 
 function! sw#sqlwindow#get_object_source()
-    if (!exists('b:profile'))
+    if (!exists('b:port'))
         return
     endif
 
     let obj = expand('<cword>')
     let sql = 'WbGrepSource -searchValues="' . obj . '" -objects=' . obj . ' -types=* -useRegex=true;'
     call sw#sqlwindow#goto_statement_buffer()
-    call sw#sqlwindow#execute_sql(sql)
+    call sw#sqlwindow#execute_sql(0, sql)
 endfunction

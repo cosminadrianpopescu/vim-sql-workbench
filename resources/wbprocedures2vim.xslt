@@ -12,7 +12,7 @@
 />
 
 <xsl:template match="/">
-let g:_procedures = [<xsl:call-template name="procedures-list"/>]
+let b:autocomplete_procs = [<xsl:call-template name="procedures-list"/>]
 </xsl:template>
 
 <xsl:template name="procedures-list">
