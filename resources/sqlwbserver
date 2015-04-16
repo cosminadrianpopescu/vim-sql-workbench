@@ -30,7 +30,7 @@ class SQLWorkbench(object):
     executing = thread.allocate_lock()
     processing = thread.allocate_lock()
     new_loop = thread.allocate_lock()
-    prompt_pattern_begin = '^[a-zA-Z_0-9\\.]+(\\@[a-zA-Z_0-9]+)?\\>[ \s\t]*'
+    prompt_pattern_begin = '^[a-zA-Z_0-9\\.]+(\\@[a-zA-Z_0-9/]+)?\\>[ \s\t]*'
     prompt_pattern = prompt_pattern_begin + '$'
     buff = ''
     dbe_connections = {}
@@ -94,7 +94,7 @@ class SQLWorkbench(object):
 
             if record == 1 and re.search(pattern1, line) == None and re.search(pattern2, line) == None:
                 if re.search('send_to_vim', line) == None:
-                    if i < len(line) - 1:
+                    if i < len(lines) - 1:
                         if re.search('^\\-\\-[\\-\\+\\s\\t ]+$', lines[i + 1]) != None or re.search('^----', lines[i + 1]) != None:
                             to_add_results = True
                             result += "--results--"
@@ -108,7 +108,7 @@ class SQLWorkbench(object):
                                 '\n==============================================================================\n' + 
                                 'Query returned ' + p.group(1) + ' row' + ('s' if int(p.group(1)) > 1 else '') + '\n')
                     else:
-                        result = result + line + "\n"
+                        result = result + re.sub(self.prompt_pattern_begin, '', line) + "\n"
                     #end if
                 #end if
             #end if
@@ -124,15 +124,13 @@ class SQLWorkbench(object):
                     '\n==============================================================================\n')
         #end if
 
-        print '========================================================================'
-        print result
-        print '========================================================================'
         return result
     #end def prepareResult
 
     def spawnDbeConnection(self, profile, conn):
         cmd = "%s -feedback=true -showProgress=false -profile=%s" % (self.cmd, profile)
         pipe = subprocess.Popen(shlex.split(cmd), stdin = subprocess.PIPE, stdout = subprocess.PIPE, bufsize = 1)
+        pipe.stdin.write('set maxrows = 100;\n')
         conn.send('DISCONNECT')
         self.dbe_connections[profile] = pipe
         print "OPENING DBE CONNECTION: " + cmd
@@ -162,7 +160,6 @@ class SQLWorkbench(object):
         else:
             pipe = self.dbe_connections[profile]
             data = conn.recv(4096)
-            print "DATA: " + data
             if (data):
                 data += "wbvardef send_to_vim = 1;\n"
                 pipe.stdin.write(data)
@@ -211,6 +208,9 @@ class SQLWorkbench(object):
                         #end if
                     else:
                         self.clock = datetime.datetime.now()
+                        if self.debug:
+                            print "SENT TO SERVER: " + line
+                        #end if
                         if line != '':
                             pipe.stdin.write(line + "\n")
                         #end if

@@ -141,7 +141,7 @@ function! sw#autocomplete#got_result()
         call s:execute_file(g:sw_tmp . "/sw_report_proc.vim")
         call sw#session#set_buffer_variable('autocomplete_procs', b:autocomplete_procs)
     endif
-    setlocal omnifunc=sw#autocomplete#perform
+    setlocal completefunc=sw#autocomplete#perform
     unlet b:autocomplete_clear
     call sw#sqlwindow#check_results()
 	echomsg "Autocomplete activated"
@@ -177,7 +177,7 @@ endfunction
 
 function! sw#autocomplete#load(name)
     call s:execute_file(g:sw_autocomplete_cache_dir . '/' . a:name . '.vim')
-    setlocal omnifunc=sw#autocomplete#perform
+    setlocal completefunc=sw#autocomplete#perform
 endfunction
 
 function! sw#autocomplete#cache(bang, ...)

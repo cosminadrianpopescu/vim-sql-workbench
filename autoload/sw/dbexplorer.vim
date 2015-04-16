@@ -125,6 +125,10 @@ function! sw#dbexplorer#unset_values_from_all_buffers(keys)
     call sw#goto_window(name)
 endfunction
 
+function! sw#dbexplorer#reconnect()
+    let result = sw#server#dbexplorer("wbconnect " . b:profile)
+endfunction
+
 function! s:process_result_1(result, shortcut, title)
     let result = a:result
     call sw#goto_window('__Info__-' . b:profile)

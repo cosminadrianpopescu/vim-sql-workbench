@@ -167,6 +167,9 @@ function! sw#server#dbexplorer(sql)
             let rec = 1
         endif
     endfor
+    if len(result) == 0
+        let result = split(s, "\n")
+    endif
     return result
 endfunction
 

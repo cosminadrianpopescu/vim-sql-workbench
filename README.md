@@ -371,8 +371,13 @@ which is the default mapping.
 take advantage of the auto complete intellisense, you have to execute first
 the `SWSqlAutocomplete` command. Depending on how many tables and views you
 have in your database, it might take even more than one minute. After the
-command is executed, normally you can press &lt;C-x&gt;&lt;C-o&gt; in insert
+command is executed, normally you can press &lt;C-x&gt;&lt;C-u&gt; in insert
 mode in a sql statement. 
+
+*Note*: due to constant conflicts with dbext plugin (which apparently has some
+parts included in the `/usr/share/vim` folder) I prefer to switch to
+&lt;C-x&gt;&lt;C-u&gt;. So, you cannot use &lt;C-x&gt;&lt;C-u&gt; anymore for
+intellisense
 
 The plugin will try to determine where you are in the sql and return the
 appropriate options. For example, if you are in the fields part of a `select`
@@ -869,6 +874,12 @@ console mode will be closed.
 This will open a new buffer which will be connected to an existing
 `sqlwbconsole` server. If the file name is not specified, then it will connect
 the current buffer to the server on the specified port. 
+
+## SWDbExplorerReconnect
+
+Reconnects the database explorer. This is useful if a timeout has occured
+while having a database connection opened. Then you call the
+`SWDbExplorerReconnect` in order to be able to execute commands again. 
 
 Settings
 ========================================

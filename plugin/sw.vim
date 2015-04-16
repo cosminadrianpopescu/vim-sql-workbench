@@ -156,6 +156,7 @@ endfor
 command! -nargs=+ -complete=customlist,sw#autocomplete_profile SWDbExplorer call sw#dbexplorer#show_panel(<f-args>)
 command! -nargs=? SWDbExplorerClose call sw#dbexplorer#hide_panel(<f-args>)
 command! SWDbExplorerRestore call sw#session#restore_dbexplorer()
+command! SWDbExplorerReconnect call sw#dbexplorer#reconnect()
 command! -nargs=+ -complete=file SWSqlConnectToServer call sw#server#connect_buffer(<f-args>, g:sw_sqlopen_command)
 command! -bang SWSqlExecuteCurrent call sw#sqlwindow#execute_sql(<bang>1, sw#sqlwindow#extract_current_sql())
 command! -bang SWSqlExecuteSelected call sw#sqlwindow#execute_sql(<bang>1, sw#sqlwindow#extract_selected_sql())
