@@ -291,7 +291,7 @@ class SQLWorkbench(object):
         time = ''
         line = ''
         buff = ''
-        while re.search('using :send_to_vim', line) == None:
+        while re.search('using.*send_to_vim', line) == None:
             line = pipe.stdout.readline()
             buff += line
             if self.debug:

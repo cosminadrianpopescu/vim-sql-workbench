@@ -91,6 +91,7 @@ function! s:pipe_execute(type, cmd, wait_result, ...)
 
     python << SCRIPT
 import vim
+import socket
 import re
 identifier = vim.eval('v:servername') + "#" + vim.eval('uid')
 cmd = vim.eval('a:cmd') + "\n"
