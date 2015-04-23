@@ -157,6 +157,13 @@ available shortcuts, see the top panel.
 The database explorer if fully customizable. You can use the existing one and
 extend it or you can create your own from scratch. 
 
+_NOTE_: For `PostgreSQL`, you should use the as database explorer the
+`resources/dbexplorer-postgresql.vim` file. This is because in `PostgreSQL`
+the objects have to be prefixed by the schema. You can achieve this either by
+just overwriting the `resources/dbexplorer.vim` file with the
+`resources/dbexplorer-postgresql.vim` file, either by following the
+documentation bellow. 
+
 ## Creating a new database explorer from scratch
 
 The database explorer is loaded from the `resources/dbexplorer.vim` file by
@@ -210,7 +217,10 @@ Optional, the panels might contain the following keys:
 
 1. In the command that creates the left panel, the object for which you want
    to select the informations in the right panel should always be on the first
-   column. The `%object%` string in the column will be replaced by it. 
+   column. The `%object%` string in the column will be replaced by it.
+   Alternatively, you can have `%n%` (n being a number from 0 to the number of
+   columns in the left panel). If you have `%n%`, this will be replaced by the
+   value of that column
 2. The command can contain a comment in the format `-- AFTER` at the end.
    Everything following "AFTER" word will be interpreted as a VIM command and
    will be executed after the result has been displayed in the right panel. For

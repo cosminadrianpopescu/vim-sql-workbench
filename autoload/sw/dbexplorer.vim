@@ -217,18 +217,41 @@ function! s:process_result_2(result, tab_shortcut, shortcut, cmd)
     endif
 endfunction
 
+function! s:get_object_columns()
+    let values = split(getline('.'), '\v \| ')
+    let result = []
+
+    for val in values
+        call add(result, substitute(val, '\v\c^[ ]*([^ ]*)[ ]*$', '\1', 'g'))
+    endfor
+
+    return result
+endfunction
+
 function! s:change_panel(command, shortcut, title, tab_shortcut)
     echomsg "Processing request..."
     "if line('.') < 5
     "    echoerr "You have to select an object in the left panel"
     "    return 
     "endif
+
+    let pattern = '\v\c^\/\* BEFORE (.*)\*\/.+$'
+    if (a:command =~ pattern)
+        let command = substitute(a:command, pattern, '\1', 'g')
+        execute command
+    endif
     if (exists('b:selected_row'))
         call matchdelete(b:selected_row)
     endif
     let object = substitute(getline('.'), '\v^([^ ]+) .*$', '\1', 'g')
     call sw#session#set_buffer_variable('selected_row', matchadd('SWSelectedObject', '^' . object . ' .*$'))
+    let columns = s:get_object_columns()
     let cmd = substitute(a:command, '\v\%object\%', object, 'g')
+    let i = 0
+    for column in columns
+        let cmd = substitute(cmd, '\v\%' . i . '\%', column, 'g')
+        let i = i + 1
+    endfor
     let result = sw#server#dbexplorer(cmd)
     call s:process_result_2(result, a:tab_shortcut, a:shortcut, cmd)
 endfunction
