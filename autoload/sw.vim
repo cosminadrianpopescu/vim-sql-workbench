@@ -1,4 +1,3 @@
-"============================================================================"
 "
 "  Vim SQL Workbench/J Implementation
 "
@@ -15,7 +14,28 @@
 "  only dependency is SQL Workbench/J. Also includes powefull intellisense
 "  autocomplete based on the current selected database
 "
-"============================================================================"
+
+""
+" @section Introduction, intro
+" This is an implementation of SQL Workbench/J in VIM. It works with any DBMS
+" supported by `SQL Workbench/J` (PostgreSQL, Oracle, SQLite, MySQL, SQL
+" Server etc.). See the complete list at
+" http://www.sql-workbench.net/databases.html. 
+"
+" Features:
+"
+"   database explorer (e.g.: table lists, procedures list, views list, triggers
+"   list)
+"   extensible (you can have your own objects list)
+"   SQL buffer with performant autocomplete
+"   export any sql statement as `text`, `sqlinsert`, `sqlupdate`,
+"   `sqldeleteinsert`, `xml`, `ods`, `html`, `json`
+"   search in object source
+"   search in table or views data
+"   asynchronous (you can execute any command asynchronous)
+"   fully customizable
+"
+"
 
 if !exists('g:Sw_unique_id')
     let g:Sw_unique_id = 1

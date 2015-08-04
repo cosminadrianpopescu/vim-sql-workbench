@@ -342,7 +342,7 @@ function! sw#autocomplete#perform(findstart, base)
         " Otherwise, extract the current sql
         let sql = sw#autocomplete#extract_current_sql()
         " Check its type
-        call sw#session#set_buffer_variable('autocomplete_type', s:get_sql_type(sql))
+        call sw#session#set_buffer_variable('autocomplete_type', s:get_sql_type(s:eliminate_sql_comments(sql)))
         " Desc type, easy peasy
         if (b:autocomplete_type == 'desc')
             return sw#autocomplete#all_objects(a:base)
