@@ -31,10 +31,10 @@ function! s:set_delimiters()
             endfor
         endif
         if !exists('g:sw_p_prefix')
-            let g:sw_p_prefix = '$['
+            let g:sw_p_prefix = '\$\['
         endif
         if !exists('g:sw_p_suffix')
-            let g:sw_p_suffix = ']'
+            let g:sw_p_suffix = '\]'
         endif
     endif
 endfunction
@@ -106,13 +106,19 @@ endfunction
 
 function! sw#variables#extract(sql)
     call s:set_delimiters()
-    let pattern = g:sw_p_prefix . '\([a-zA-Z_].\{-\}\)' . g:sw_p_suffix . '\>'
+    let pattern = g:sw_p_prefix . '\([a-zA-Z_].\{\-\}\)' . g:sw_p_suffix
+    if g:sw_p_suffix == ''
+        let pattern = pattern . '\>'
+    endif
     let result = []
     let n = 0
     let i = match(a:sql, pattern, n)
     while i != -1
         let l = matchlist(a:sql, pattern, n)
         let s = substitute(l[0], '^' . g:sw_p_prefix, '', 'g')
+        if g:sw_p_suffix != ''
+            let s = substitute(s, g:sw_p_suffix . '$', '', 'g')
+        endif
         let n = i + strlen(l[0]) + 1
         if index(result, s) == -1
             call add(result, s)
