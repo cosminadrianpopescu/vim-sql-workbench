@@ -94,19 +94,19 @@ import vim
 import socket
 import re
 identifier = vim.eval('v:servername') + "#" + vim.eval('uid')
-cmd = vim.eval('a:cmd') + "\n"
+cmd = vim.eval('a:cmd')
 port = int(vim.eval('port'))
 type = vim.eval('a:type')
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 s.connect(('127.0.0.1', port))
-s.sendall(type)
+packet = ''
+packet += type
 if vim.eval('a:wait_result') == '0':
-    s.sendall("!#identifier = " + identifier + "\n")
+    packet += "!#identifier = " + identifier + "\n"
 #end if
-s.sendall(cmd)
-if vim.eval('a:wait_result') == '0' or (vim.eval('a:wait_result') == '1' and type != 'RES' and type != 'DBE'):
-    s.sendall("!#end = 1\n")
-#end if
+packet += cmd
+packet = str(len(packet)) + "#" + packet
+s.sendall(packet)
 result = ''
 if vim.eval('a:wait_result') == '1':
     while 1:

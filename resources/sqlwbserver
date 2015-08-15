@@ -22,9 +22,9 @@ class SQLWorkbench(object):
     port = 5000
     results = {}
     debug = 0
+    threads_started = 0
     vim = 'vim'
     tmp = "/tmp"
-    clock = datetime.datetime.now()
     quit       = False
     lock       = thread.allocate_lock()
     executing = thread.allocate_lock()
@@ -35,6 +35,20 @@ class SQLWorkbench(object):
     buff = ''
     dbe_connections = {}
     identifier = None
+
+    def startThread(self):
+        # if self.debug:
+        #     print "NEW THREAD STARTED"
+        # #end if
+        self.threads_started += 1
+    #end def startThread
+
+    def stopThread(self):
+        # if self.debug:
+        #     print "THREAD STOPPED"
+        # #end if
+        self.threads_started -= 1
+    #end def stopThread
 
     def parseCustomCommand(self, command):
         if command[0] == 'identifier':
@@ -95,7 +109,7 @@ class SQLWorkbench(object):
             if record == 1 and re.search(pattern1, line) == None and re.search(pattern2, line) == None:
                 if re.search('send_to_vim', line) == None:
                     if i < len(lines) - 1:
-                        if re.search('^\\-\\-[\\-\\+\\s\\t ]+$', lines[i + 1]) != None or re.search('^----', lines[i + 1]) != None:
+                        if re.search('^\\-\\-[\\-\\+\\s\\t ]+$', lines[i + 1]) != None:
                             to_add_results = True
                             result += "--results--"
                         #end if
@@ -108,7 +122,9 @@ class SQLWorkbench(object):
                                 '\n==============================================================================\n' + 
                                 'Query returned ' + p.group(1) + ' row' + ('s' if int(p.group(1)) > 1 else '') + '\n')
                     else:
-                        result = result + re.sub(self.prompt_pattern_begin, '', line) + "\n"
+                        line = re.sub(self.prompt_pattern_begin, '', line)
+                        line = re.sub("^(\\.\\.> )+", '', line)
+                        result = result + line + "\n"
                     #end if
                 #end if
             #end if
@@ -128,22 +144,25 @@ class SQLWorkbench(object):
     #end def prepareResult
 
     def spawnDbeConnection(self, profile, conn):
+        self.startThread()
         cmd = "%s -feedback=true -showProgress=false -profile=%s" % (self.cmd, profile)
         pipe = subprocess.Popen(shlex.split(cmd), stdin = subprocess.PIPE, stdout = subprocess.PIPE, bufsize = 1)
         pipe.stdin.write('set maxrows = 100;\n')
         conn.send('DISCONNECT')
         self.dbe_connections[profile] = pipe
-        print "OPENING DBE CONNECTION: " + cmd
+        if self.debug:
+            print "OPENING DBE CONNECTION: " + cmd
+        #end if
         while 1:
             with self.lock:
                 if self.quit: break
             #end with
             time.sleep(0.3)
         #end while
-        pipe.stdin.write("exit\n")
+        self.stopThread()
     #end def spawnDbeConnection
 
-    def dbExplorer(self, conn):
+    def dbExplorer(self, conn, n):
         profile = ''
         char = ''
         while char != '\n':
@@ -157,11 +176,12 @@ class SQLWorkbench(object):
             while (not profile in self.dbe_connections):
                 time.sleep(0.1)
             #end while
-        else:
+        #end if
+        if n - len(profile) - 4 > 0:
             pipe = self.dbe_connections[profile]
             data = conn.recv(4096)
             if (data):
-                data += "wbvardef send_to_vim = 1;\n"
+                data += "\nwbvardef send_to_vim = 1;\nwbvardelete send_to_vim;\n"
                 pipe.stdin.write(data)
                 result = self.receiverDbe(pipe)
                 conn.send(self.prepareResult(result))
@@ -169,11 +189,8 @@ class SQLWorkbench(object):
         #end if
     #end def dbExplorer
 
-    def searchResult(self, conn):
-        data = conn.recv(4096)
-        if not data: 
-            return
-        #end if
+    def searchResult(self, conn, n):
+        data = self.readData(conn, n)
         p = self.getCaller(data)
         if p == None:
             return
@@ -186,42 +203,43 @@ class SQLWorkbench(object):
         #end if
     #end def searchResult
 
-    def receiveData(self, conn, pipe):
+    def readData(self, conn, n):
+        result = ''
+        i = 0
+        while i < n:
+            data = conn.recv(4096)
+            if not data:
+                break
+            #end if
+            result += data
+            i += len(data)
+        #end while
+
+        return result
+    #end def readData
+
+    def receiveData(self, conn, pipe, n):
         with self.processing:
             self.identifier = None
-            cont = True
-            while 1:
-                data = conn.recv(4096)
-                if not data: 
-                    break
-                #end if
-                lines = data.split("\n")
-                for line in lines:
-                    if re.search('^!#', line) != None:
-                        command = self.gotCustomCommand(line)
-                        if command != None:
-                            self.parseCustomCommand(command)
-                            if command[0] == 'end':
-                                cont = False
-                                break
-                            #end if
-                        #end if
-                    else:
-                        self.clock = datetime.datetime.now()
-                        if self.debug:
-                            print "SENT TO SERVER: " + line
-                        #end if
-                        if line != '':
-                            pipe.stdin.write(line + "\n")
-                        #end if
+            buff = self.readData(conn, n)
+            lines = buff.split("\n")
+            for line in lines:
+                if re.search('^!#', line) != None:
+                    command = self.gotCustomCommand(line)
+                    if command != None:
+                        self.parseCustomCommand(command)
                     #end if
-                #end for
-                if not cont:
-                    break
+                else:
+                    if self.debug:
+                        print "SENT TO SERVER: " + line
+                    #end if
+                    if line != '':
+                        pipe.stdin.write(line + "\n")
+                    #end if
                 #end if
-            #end while
+            #end for
             with self.new_loop:
-                pipe.stdin.write("wbvardef send_to_vim = 1;\n")
+                pipe.stdin.write("wbvardef send_to_vim = 1;\nwbvardelete send_to_vim;\n")
                 if self.identifier == None:
                     with self.executing:
                         data = self.prepareResult(self.buff)
@@ -243,22 +261,37 @@ class SQLWorkbench(object):
     #end def receiveData
 
     def newConnection(self, conn, pipe):
+        n = ''
+        c = ''
+        while c != '#':
+            c = conn.recv(1)
+            if c != '#':
+                n += c
+            #end if
+        #end while
+        if (n != ''):
+            n = int(n)
+        else:
+            n = 0
+        #end if
         data = conn.recv(3)
         if data == 'COM':
-            self.receiveData(conn, pipe)
+            self.receiveData(conn, pipe, n - 3)
         elif data == 'RES':
-            self.searchResult(conn)
+            self.searchResult(conn, n - 3)
         elif data == 'DBE':
-            self.dbExplorer(conn)
+            self.dbExplorer(conn, n)
         #end if
         conn.close()
     #end def newConnection
 
     def monitor(self, pipe, port):
+        self.startThread()
         HOST = '127.0.0.1'   # Symbolic name meaning all available interfaces
 
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.settimeout(3)
          
         try:
             s.bind((HOST, port))
@@ -270,13 +303,17 @@ class SQLWorkbench(object):
          
         #now keep talking with the client
         while 1:
-            #wait to accept a connection - blocking call
-            conn, addr = s.accept()
-            if self.debug:
-                print 'Connected with ' + addr[0] + ':' + str(addr[1])
+            try:
+                conn, addr = s.accept()
+            except Exception:
+                conn = None
+            #end try
+            if conn != None:
+                if self.debug:
+                    print 'Connected with ' + addr[0] + ':' + str(addr[1])
+                #end if
+                thread.start_new_thread(self.newConnection, (conn, pipe))
             #end if
-
-            thread.start_new_thread(self.newConnection, (conn, pipe))
 
             with self.lock:
                 if self.quit:
@@ -285,10 +322,10 @@ class SQLWorkbench(object):
             #end with
         #end while
         s.close()
+        self.stopThread()
     #end def monitor
 
     def receiverDbe(self, pipe):
-        time = ''
         line = ''
         buff = ''
         while re.search('using.*send_to_vim', line) == None:
@@ -305,7 +342,7 @@ class SQLWorkbench(object):
     def receiver(self, pipe):
         first_prompt = False
         record_set = False
-        time = ''
+        self.startThread()
         while True:
             with self.new_loop:
                 line = ''
@@ -314,22 +351,20 @@ class SQLWorkbench(object):
             with self.executing:
                 while re.search('send_to_vim', line) == None:
                     line = pipe.stdout.readline()
-                    if re.search(self.prompt_pattern_begin, line) != None:
-                        if not first_prompt:
-                            first_prompt = True
-                            self.buff = ''
-                        else:
-                            self.buff += "\n" + time + "\n"
+                    if line:
+                        if re.search(self.prompt_pattern_begin, line) != None:
+                            if not first_prompt:
+                                first_prompt = True
+                                self.buff = ''
+                            #end if
                         #end if
-                    #end if
-                    if re.search('^[\\-\\+]+$', line):
-                        time = "SQL execution time: %.2g seconds" % (datetime.datetime.now() - self.clock).total_seconds() 
-                        self.clock = datetime.datetime.now()
-                    #end if
-                    self.buff += line
-                    if self.debug:
-                        sys.stdout.write(line)
-                        sys.stdout.flush()
+                        self.buff += line
+                        if self.debug:
+                            sys.stdout.write(line)
+                            sys.stdout.flush()
+                        #end if
+                    else:
+                        break
                     #end if
                 #end while
                 if self.identifier != None:
@@ -345,6 +380,7 @@ class SQLWorkbench(object):
                 if self.quit: break
             #end with
         #end while
+        self.stopThread()
     #end def receiver
 
     def main(self):
@@ -357,7 +393,9 @@ class SQLWorkbench(object):
         if (self.profile != None):
             cmd += " -profile=%s" % self.profile
         #end if
-        print "OPENING: " + cmd
+        if self.debug:
+            print "OPENING: " + cmd
+        #end if
         pipe = subprocess.Popen(shlex.split(cmd), stdin = subprocess.PIPE, stdout = subprocess.PIPE, bufsize = 1)
 
         thread.start_new_thread(self.receiver, (pipe,))
@@ -374,7 +412,11 @@ class SQLWorkbench(object):
             with self.lock:
                 self.quit = True
         #end try...except
-        time.sleep(0.3)
+        print "Waiting for server to stop..."
+        while self.threads_started > 0:
+            time.sleep(0.3)
+        #end while
+        sys.exit(0)
     #end def main
 #end class SQLWorkbench
 

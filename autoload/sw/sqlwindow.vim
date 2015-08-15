@@ -444,10 +444,15 @@ function! s:process_result(result)
 
     normal ggdd
     setlocal nomodifiable
-    let b = sw#find_buffer_by_unique_id(b:r_unique_id)
-    if b != ''
-        call sw#goto_window(b)
+    if !g:sw_switch_to_results_tab
+        let b = sw#find_buffer_by_unique_id(b:r_unique_id)
+        if b != ''
+            call sw#goto_window(b)
+        else
+            wincmd t
+        endif
     endif
+    echomsg "Command completed"
 endfunction
 
 function! sw#sqlwindow#execute_sql(wait_result, sql)
@@ -465,6 +470,7 @@ function! sw#sqlwindow#execute_sql(wait_result, sql)
                     let _sql = w:auto_added1 . 'wbvardef ' . var . ' = ' . value . "\n" . b:delimiter . "\n" . w:auto_added2 . _sql
                 endif
             endfor
+            let _sql = substitute(_sql, g:parameters_pattern, g:sw_p_prefix . '\1' . g:sw_p_suffix, 'g')
         endif
     endif
     let b:on_async_result = 'sw#sqlwindow#check_results'

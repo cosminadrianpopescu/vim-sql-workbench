@@ -26,18 +26,19 @@ CONTENTS:
 2. Connecting to a DBMS
 3. The database explorer
 4. The SQL Buffer
-5. Searching
-6. Exporting
-7. Sessions
-8. Variables
-9. Commands
-10. Settings
-11. Screen shots
+5. SQL commands
+6. Searching
+7. Exporting
+8. Sessions
+9. Variables
+10. Commands
+11. Settings
+12. Screen shots
 
 Requirements
 ========================================
 
-* `Vim` compiled with `python` supported
+* `Vim` compiled with `python` support
 * `Python` installed on the machine
 * `SQL Workbench/J` installed on the machine
 * Optional: [`vim dispatch`](https://github.com/tpope/vim-dispatch) plugin
@@ -478,6 +479,29 @@ shortcut.
 Alternatively, you can execute the `WbDisplay` command. See
 [here](http://www.sql-workbench.net/manual/console-mode.html) for more detail.
 
+SQL commands
+========================================
+
+You can send a sql query to the DBMS from the vim command line using the
+command `SWSqlExecuteNow`. The first parameter is the port of the server on
+which to execute, and the next parameters are the sql query. Please note that
+by default no results will be shown. If you want to see all that happened on
+the server side, use the `SWSqlExecuteNowLastResult` command. This will show
+you what happened with the last command sent from the vim command line. 
+
+This is useful if you want to put vim shortcuts for simple things. Like, for
+example, you could have in your `vimrc`:
+
+```
+nnoremap <leader>t :SWSqlExecuteNow 5000 wbdisplay tab;<cr>
+```
+
+Then pressing `<leader>t` in normal mode, would set the display to tab for the
+instance listening on port 5000.
+
+*Note*: This command will not be recorded in `g:sw_last_sql_query`. The
+delimiter is the `;`.
+
 Searching
 ========================================
 
@@ -600,50 +624,11 @@ By default, in `SQL Workbench`, the variables are enclosed between `$[` and
 `]`. [These can be
 changed](http://www.sql-workbench.net/manual/using-variables.html#access-variable). 
 
-By default, in `VIM SQL Workbench` the variable substitution is on. This
-means, that when you send a query to the database, the plugin will search for
-anything enclosed between the parameter prefix and suffix. Once a match is
-found, if a value is defined with `SWVarSet` then the match is replaced with
-this value. Please note that exactly the literal is replaced. No quotes are
-added and no escaping is executed. If you want quotes, you need to add then in
-the value. 
-
-If the variable is not defined using `SWVarSet` the plugin will ask for a
-value. If you don't want this string to be replaced when the query is sent to
-the database, then you can use an empty string as a value. If you want to send
-to the database an empty string, then you have to set the value `''`. 
-
-If you set already a value for a variable, you can always change it by
-executing again `SWVarSet`. 
-
-A variable can be unset using `SWVarUnset`. 
-
-If you don't want the plugin doing parameters substitution for a given buffer,
-you can call `SWVarDisable`. You can always re-enable the parameter
-substitution by calling `SWVarEnable`.
-
-Example: 
-
-In your `workbench.settings` file: 
-
-```
-workbench.sql.parameter.prefix=:
-workbench.sql.parameter.suffix=
-```
-
-The sql query: `select * from table where d = '2015-01-01 00:00:00'`. 
-
-When launching this query, you will be asked for the value of the `00`
-variable. You can just press `enter` and the `:00` will not be replace. 
-
-The sql query: `select * from table where name = :name`. 
-
-When launching this query, you will be asked for the value of the `name`
-variable. If you enter `'Cosmin Popescu'`, the query sent to the DBMS will be
-`select * from table where name = 'Cosmin Popescu'`. Please note that if you
-just enter `Cosmin Popescu` (notice the missing quotes), the query sent to the
-DBMS will be `select * from table where name = Cosmin Popescu` which will
-obviously return an error. 
+You can use `WbVarSet` and `WbVarUnset` in a sql buffer. If you want the
+system to ask for a value, then you can use the `$[?` form of a parameter.
+Please note that in `VIM Sql Workbench` there is no difference between `?` and
+`&`, since there is no way to get a list of vars in `vimscript` from `SQL
+Workbench/J`
 
 Commands
 ========================================
@@ -718,6 +703,19 @@ Like the previous command, if you are with your cursor on top of a word and
 call this command, the plugin will return it's source code, if the selected
 word is an object in the database. Otherwise, it will return an empty result
 set. 
+
+## SWSqlExecuteNow
+
+*Parameters*:
+
+* port: the port on which to execute the command
+* sql: The query to be sent to the DBMS
+
+Executes a query against the DBMS on the indicated port.
+
+## SWSqlExecuteNowLastResult
+
+Shows the communication with the server for the last `SWSqlExecuteNow` command.
 
 ## SWSqlExport
 
@@ -823,35 +821,6 @@ This command will restore the properties of the sql buffer following a vim
 session restore. This includes the autocomplete intellisense of the buffer, if
 this was active when `mksession` was executed. 
 
-## SWVarSet
-
-*Parameters*:
-
-* the variable name: the name of the variable to be set
-* the value: the value that you want to set for this variable
-
-If you want to set a string enclosed between the `SQL Workbench/J` parameters
-suffix and prefix without being substituted, then set it to an empty string.
-If you want to replace a parameter with an empty string, set the value of the
-variable to `''`. 
-
-## SWVarUnset
-
-Unsets a variable
-
-## SWVarDisable
-
-Disables the replacement of the parameters in the queries sent to the DBMS.
-
-## SWVarEnable
-
-Enables the replacement of the parameters in the queries sent to the DBMS
-(enabled by default).
-
-## SWVarList
-
-Lists the parameters values
-
 ## SWServerStart
 
 *Parameters*:
@@ -946,6 +915,8 @@ and
   in a db explorer will switch between the bottom panels
 * `g:sw_autocomplete_cache_dir`: the location where the autocomplete
   information is saved. You'll need to set it on Windows to work. 
+* `g:sw_switch_to_results_tab`: If true, then switch to the results buffer
+  after executting a query
 
 ## Database explorer settings
 

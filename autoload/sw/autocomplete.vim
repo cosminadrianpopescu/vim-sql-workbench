@@ -470,6 +470,16 @@ function! sw#autocomplete#perform(findstart, base)
             endfor
 
             return sort(result, "sw#autocomplete#sort")
+        elseif b:autocomplete_type == 'wbconnect'
+            let profiles = sw#parse_profile_xml()
+            let result = []
+            for profile in profiles
+                if profile =~ '^' . a:base
+                    call add(result, profile)
+                endif
+            endfor
+
+            return result
         endif
 
         return []
@@ -496,6 +506,8 @@ function! s:get_sql_type(sql)
         return 'proc'
 	elseif sql =~ '\v\c[\s \t\r]*delete'
 		return 'delete'
+    elseif sql =~ '\v\c^[\s \t\r]*wbconnect'
+        return 'wbconnect'
     endif
 
     return 'other'

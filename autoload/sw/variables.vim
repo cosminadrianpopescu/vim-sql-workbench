@@ -36,6 +36,11 @@ function! s:set_delimiters()
         if !exists('g:sw_p_suffix')
             let g:sw_p_suffix = '\]'
         endif
+
+        let g:parameters_pattern = g:sw_p_prefix . '[?&]\([a-zA-Z_].\{\-\}\)' . g:sw_p_suffix
+        if g:sw_p_suffix == ''
+            let g:parameters_pattern = g:parameters_pattern . '\>'
+        endif
     endif
 endfunction
 
@@ -87,43 +92,24 @@ endfunction
 
 function! sw#variables#get(key)
     call s:init_vars()
-    if has_key(b:variables, a:key)
-        return b:variables[a:key]
-    endif
-
     let value = input('Please input the value for ' . a:key . ': ')
     call sw#variables#set(a:key, value)
     return value
 endfunction
 
-function! sw#variables#enable()
-    call sw#session#unset_buffer_variable('no_variables')
-endfunction
-
-function! sw#variables#disable()
-    call sw#session#set_buffer_variable('no_variables', 1)
-endfunction
-
 function! sw#variables#extract(sql)
     call s:set_delimiters()
-    let pattern = g:sw_p_prefix . '\([a-zA-Z_].\{\-\}\)' . g:sw_p_suffix
-    if g:sw_p_suffix == ''
-        let pattern = pattern . '\>'
-    endif
     let result = []
     let n = 0
-    let i = match(a:sql, pattern, n)
+    let i = match(a:sql, g:parameters_pattern, n)
     while i != -1
-        let l = matchlist(a:sql, pattern, n)
-        let s = substitute(l[0], '^' . g:sw_p_prefix, '', 'g')
-        if g:sw_p_suffix != ''
-            let s = substitute(s, g:sw_p_suffix . '$', '', 'g')
-        endif
+        let l = matchlist(a:sql, g:parameters_pattern, n)
+        let s = substitute(l[0], '^' . g:sw_p_prefix . '?', '', 'g')
         let n = i + strlen(l[0]) + 1
-        if index(result, s) == -1
-            call add(result, s)
+        if index(result, l[1]) == -1
+            call add(result, l[1])
         endif
-        let i = match(a:sql, pattern, n)
+        let i = match(a:sql, g:parameters_pattern, n)
     endwhile
     return result
 endfunction

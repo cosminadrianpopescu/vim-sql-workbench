@@ -81,6 +81,10 @@ if !exists('g:sw_sqlopen_command')
     let g:sw_sqlopen_command = 'e'
 endif
 
+if !exists('g:sw_switch_to_results_tab')
+    let g:sw_switch_to_results_tab = 0
+endif
+
 if (!exists('g:sw_default_right_panel_type'))
     let g:sw_default_right_panel_type = 'txt'
 endif
@@ -166,6 +170,8 @@ command! SWSqlToggleFormDisplay call sw#sqlwindow#toggle_display()
 command! SWSqlObjectInfo call sw#sqlwindow#get_object_info()
 command! SWSqlObjectSource call sw#sqlwindow#get_object_source()
 command! SWSqlExport call sw#sqlwindow#export_last()
+command! -bang -nargs=+ SWSqlExecuteNow call sw#cmdline#execute(<bang>1, <f-args>)
+command! -nargs=0 SWSqlExecuteNowLastResult call sw#cmdline#show_last_result()
 command! -bang -nargs=+ SWSearchObject call sw#search#object(<bang>1, <f-args>)
 command! -bang SWSearchObjectAdvanced call sw#search#object(<bang>1)
 command! -bang -nargs=1 SWSearchObjectDefaults call sw#search#object_defaults(<bang>1, <f-args>)
@@ -176,12 +182,6 @@ command! -bang -nargs=* SWSqlAutocomplete call sw#autocomplete#cache(<bang>0, <f
 command! -nargs=1 -complete=customlist,sw#autocomplete#complete_cache_name SWSqlAutocompleteLoad call sw#autocomplete#load(<f-args>)
 command! -nargs=1 -complete=customlist,sw#autocomplete#complete_cache_name SWSqlAutocompletePersist call sw#autocomplete#persist(<f-args>)
 command! SWSqlBufferRestore call sw#session#restore_sqlbuffer()
-
-command! -nargs=+ -complete=customlist,sw#variables#autocomplete_names SWVarSet call sw#variables#set(<f-args>, '')
-command! -nargs=1 -complete=customlist,sw#variables#autocomplete_names SWVarUnset call sw#variables#unset(<f-args>)
-command! -nargs=0 SWVarDisable call sw#variables#disable()
-command! -nargs=0 SWVarEnable call sw#variables#enable()
-command! -nargs=0 SWVarList call sw#variables#list()
 
 command! -nargs=+ -complete=customlist,sw#autocomplete_profile SWServerStart call sw#server#run(<f-args>)
 command! -nargs=1 SWServerStop call sw#server#stop(<f-args>)
