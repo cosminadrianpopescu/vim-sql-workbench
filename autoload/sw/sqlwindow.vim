@@ -23,8 +23,10 @@ let s:script_path = expand('<sfile>:p:h') . '/../../'
 
 function! s:check_sql_buffer()
     if (!exists('b:port'))
-        throw "The current buffer is not an SQL Workbench buffer. Open it using the SWOpenSQL command."
+        call sw#display_error("The current buffer is not an SQL Workbench buffer. Open it using the SWOpenSQL command.")
+        return 0
     endif
+    return 1
 endfunction
 
 function! sw#sqlwindow#goto_statement_buffer()
@@ -115,9 +117,12 @@ function! sw#sqlwindow#open_buffer(port, file, command)
 endfunction
 
 function! sw#sqlwindow#set_delimiter(new_del)
-    call s:check_sql_buffer()
+    if (!s:check_sql_buffer())
+        return 
+    endif
     if exists('b:port')
-        throw 'You cannot change the delimier in server mode. This happens because SQL Workbench does now know another delimiter during console mode. You can only change the delimiter in batch mode (see the documentation). So, if you want to change the delimiter, please open the buffer in batch mode. '
+        sw#display_error('You cannot change the delimier in server mode. This happens because SQL Workbench does now know another delimiter during console mode. You can only change the delimiter in batch mode (see the documentation). So, if you want to change the delimiter, please open the buffer in batch mode.')
+        return 
     endif
     call sw#session#set_buffer_variable('delimiter', a:new_del)
 endfunction
@@ -144,6 +149,10 @@ function! sw#sqlwindow#extract_current_sql(...)
         let s = s . line . "\n"
     endfor
 
+    if !exists('b:delimiter')
+        call sw#display_error("The buffer is not connected to a server. Please use SWSqlConectToServer before running queries")
+        return ''
+    endif
     let sqls = sw#sql_split(s, b:delimiter)
     for sql in sqls
         if sql =~ '#CURSOR#'
@@ -153,7 +162,7 @@ function! sw#sqlwindow#extract_current_sql(...)
             return sql
         endif
     endfor
-    throw "Could not identifiy the current query"
+    call sw#display_error("Could not identifiy the current query")
     return ""
 endfunction
 
@@ -459,7 +468,9 @@ function! sw#sqlwindow#execute_sql(wait_result, sql)
     let w:auto_added1 = "-- auto\n"
     let w:auto_added2 = "-- end auto\n"
 
-    call s:check_sql_buffer()
+    if (!s:check_sql_buffer())
+        return 
+    endif
     let _sql = a:sql
     if !exists('b:no_variables')
         let vars = sw#variables#extract(_sql)

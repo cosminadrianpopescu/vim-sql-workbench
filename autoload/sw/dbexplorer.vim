@@ -21,6 +21,8 @@ if !exists('g:SW_Tabs')
     let g:SW_Tabs = {}
 endif
 
+let s:profiles = {}
+
 " Local functions{{{1
 " Iterates in the tabs array{{{2
 
@@ -28,11 +30,28 @@ function! s:iterate(f)
     for _profile in items(g:SW_Tabs)
         let profile = _profile[0]
         let tabs = _profile[1]
-        if (profile == b:profile || profile == '*')
+        let type_ok = 0
+        if (profile =~ '^[:\^]')
+            if (len(s:profiles) == 0)
+                let s:profiles = sw#parse_profile_xml()
+            endif
+            let dbms_type = substitute(profile, '^[:\^]', '', 'g')
+            let cond = substitute(profile, '\v\c^([:\^]).*$', '\1', 'g')
+
+            for xml_profile in items(s:profiles)
+                if tolower(substitute(xml_profile[0], "\\\\", '___', 'g')) == tolower(b:profile) && 
+                            \ ((tolower(xml_profile[1]) == tolower(dbms_type) && cond == ':') ||
+                            \ (tolower(xml_profile[1]) != tolower(dbms_type) && cond == '^'))
+                    let type_ok = 1
+                    break
+                endif
+            endfor
+        endif
+        if (profile == b:profile || profile == '*' || type_ok)
             for tab in tabs
                 execute "let r = " . a:f . "(tab)"
                 if !r
-                    break
+                    return
                 endif
             endfor
         endif
@@ -358,7 +377,7 @@ function! sw#dbexplorer#hide_panel(...)
     endif
     let name = "__SQL__-" . profile
     if !bufexists(name)
-        echoerr "There is no dbexplorer opened for " . profile
+        call sw#display_error("There is no dbexplorer opened for " . profile)
         return 
     endif
 
@@ -372,7 +391,7 @@ function! sw#dbexplorer#export()
     if (exists('b:last_cmd'))
         call sw#export_ods(b:profile, b:last_cmd)
     else
-        echoerr "The panel is empty!"
+        call sw#display_error("The panel is empty!")
     endif
 endfunction
 
@@ -423,12 +442,13 @@ endfunction
 
 " Shows the dbexplorer panel{{{2
 function! sw#dbexplorer#show_panel(profile, port, ...)
-    let result = sw#server#open_dbexplorer(a:profile, a:port)
+    let profile = substitute(a:profile, '\\', '___', 'g')
+    let result = sw#server#open_dbexplorer(profile, a:port)
     let s_below = &splitbelow
     set nosplitbelow
-    let name = "__SQL__-" . a:profile
+    let name = "__SQL__-" . profile
     if bufexists(name)
-        echoerr "There is already a dbexplorer opened for " . a:profile
+        call sw#display_error("There is already a dbexplorer opened for " . profile)
         return 
     endif
 
@@ -447,19 +467,19 @@ function! sw#dbexplorer#show_panel(profile, port, ...)
 
     execute "badd " . name
     execute "buffer " . name
-    call s:set_special_buffer(a:profile, a:port)
+    call s:set_special_buffer(profile, a:port)
     call sw#session#set_buffer_variable('unique_id', uid)
     nnoremap <buffer> <silent> E :call sw#dbexplorer#export()<cr>
     nnoremap <buffer> <silent> B :call <SID>open_in_new_buffer()<cr>
-    execute "silent! split __Info__-" . a:profile
+    execute "silent! split __Info__-" . profile
     resize 7
     "let id = matchadd('SWHighlights', '\v^([^\(]+\([A-Za-z]+\)( \| )?)+$')
-    call s:set_special_buffer(a:profile, a:port)
+    call s:set_special_buffer(profile, a:port)
     call sw#session#set_buffer_variable('unique_id', uid)
     call s:set_highlights()
     wincmd b
-    execute "silent! vsplit __DBExplorer__-" . a:profile
-    call s:set_special_buffer(a:profile, a:port)
+    execute "silent! vsplit __DBExplorer__-" . profile
+    call s:set_special_buffer(profile, a:port)
     call sw#session#set_buffer_variable('unique_id', uid)
     vertical resize 60
     ""call s:set_objects_buffer()
@@ -481,5 +501,15 @@ function! sw#dbexplorer#fix_source_code()
     setlocal modifiable
     normal gg0G0x
     setlocal nomodifiable
+endfunction
+
+function! sw#dbexplorer#postgre_proc(line)
+    let proc = substitute(a:line, '\v\c([^\(]+)\(.*$', '\1', 'g')
+    let lines = sw#server#dbexplorer('WbProcSource ' . proc)
+    let result = ''
+    for line in lines
+        let result = result . line . "\n"
+    endfor
+    return result
 endfunction
 " vim:fdm=marker

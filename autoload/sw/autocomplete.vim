@@ -299,7 +299,8 @@ endfunction
 function! sw#autocomplete#perform(findstart, base)
     " Check that the cache is alright
     if !exists('b:autocomplete_tables') && !exists('g:sw_autocomplete_default_tables')
-        throw "First you have to clear the completion cache to use autocomplete"
+        call sw#display_error("First you have to clear the completion cache to use autocomplete")
+        return []
     endif
 	call sw#session#init_section()
     if (exists('b:sql'))
@@ -473,7 +474,7 @@ function! sw#autocomplete#perform(findstart, base)
         elseif b:autocomplete_type == 'wbconnect'
             let profiles = sw#parse_profile_xml()
             let result = []
-            for profile in profiles
+            for profile in keys(profiles)
                 if profile =~ '^' . a:base
                     call add(result, profile)
                 endif

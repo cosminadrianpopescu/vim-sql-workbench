@@ -67,6 +67,10 @@ listen for requests. After this, whenever you want to send a command to the
 DBMS from `VIM`, the plugin will connect on the specified port, send the
 command and retrieve the result which will be displayed in `VIM`. 
 
+In order to work properly, you should keep the settings on default. Settings
+like `workbench.console.script.showtime` could affect the functionality of
+`VIM sql workbench`.
+
 Connecting to a DBMS
 ========================================
 
@@ -158,13 +162,6 @@ available shortcuts, see the top panel.
 The database explorer if fully customizable. You can use the existing one and
 extend it or you can create your own from scratch. 
 
-_NOTE_: For `PostgreSQL`, you should use the as database explorer the
-`resources/dbexplorer-postgresql.vim` file. This is because in `PostgreSQL`
-the objects have to be prefixed by the schema. You can achieve this either by
-just overwriting the `resources/dbexplorer.vim` file with the
-`resources/dbexplorer-postgresql.vim` file, either by following the
-documentation bellow. 
-
 ## Creating a new database explorer from scratch
 
 The database explorer is loaded from the `resources/dbexplorer.vim` file by
@@ -179,8 +176,41 @@ which the panel will be applied. `*` profile, means that the options appear on
 all profiles. If you want to have separate database explorers for separate
 profiles, you can create a key in the dictionary for each explorer. 
 
-*NOTE:* At the moment you can only create profiles for different profiles, not
-for different DBMS.
+You can also have profiles per type of DBMS. If you have a profile starting
+with a `:` or a '^'.
+
+A `:` means that this options will appear for all the profiles which the DBMS
+is of that type. For example `:MySQL` it means that these options will appear
+only for `mysql` databases. 
+
+A `^` means that this options will appear for all the profiles for which the
+DBMS is not of that type. For example `^PostgreSQL` means that there options
+will appear for all databases which are not `PostgreSQL`. 
+
+For this to work, you have to have the option `g:sw_config_dir` set. The
+profile informations are read from the `WbProfiles.xml` file which resides in
+this folder. The profile type you can see it in the `SQL Workbench/J`
+connection window. It's the driver title.
+
+Starting with version `4.0` you can also have a vimscript function called
+instead of a sql query. The function called has to return a string which will
+be interpreted as the result of the operation. The function will receive as
+parameters the line selected (the complete line which has been selected). In
+order to have a function instead of a sql query in the database explorer, the
+`command` has to begin with `:`. 
+
+For example: 
+
+```
+{'title': 'Data', 'shortcut': 'D', 'command': ':My_function'}
+```
+
+When the shortcut D will be pressed, the result will be fetch by calling
+`My_function(getline('.'))`
+
+Of course, the current line is only relevant only for when changing a tab.
+When changing a tab, the current line will contain whatever value is on the
+currently line in whatever buffer you are at that moment.
 
 The values for each profile, have to be a list which will contain all the
 options for the left panel. For example, in the default one, the database
@@ -375,6 +405,21 @@ is going to be sent to the DBMS.
 
 Also here you can use an exclamation mark to execute the command asynchronous,
 which is the default mapping. 
+
+## Profiling
+
+Unfortunately, the `SQL Workbench/J` console application does not return the
+time that it took for a command to execute. This plugin will try to do some
+profiling, but it will report the full time it took for a command to execute.
+This means that this time will also include the communication with the
+`sqwbconsole` server, the time to display the results in console (if on debug
+mode) the time it took `SQL Workbench/J` console application to communicate
+with the DBMS via `jdbc` and any other operations involved. 
+
+So, if you want to do some profiling, try to either to `select count(*) from
+your_table` (this would eliminate some operations, like displaying the results
+in console if in debug mode) or to set the maximum number of results to a low
+value (like 10). And (of course), send only one query at a time.
 
 ## Intellisense
 

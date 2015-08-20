@@ -19,21 +19,12 @@
 
 function! s:set_delimiters()
     if !exists('g:sw_p_suffix') && !exists('g:sw_p_prefix')
-        let p1 = '\v\c^[\s \t]*workbench\.sql\.parameter\.(suffix|prefix)'
-        if exists('g:sw_config_dir')
-            let lines = readfile(g:sw_config_dir . 'workbench.settings')
-            for line in lines
-                if line =~ p1
-                    let p2 = p1 . '[\s \t]*\=[\s\t ]*(.*)$'
-                    let type = substitute(line, p2, '\1', 'g')
-                    execute "let g:sw_p_" . type . " = substitute(line, p2, '\\2', 'g')"
-                endif
-            endfor
-        endif
-        if !exists('g:sw_p_prefix')
+        let g:sw_prefix = sw#get_sw_setting('workbench.sql.parameter.prefix')
+        let g:sw_suffix = sw#get_sw_setting('workbench.sql.parameter.suffix')
+        if g:sw_prefix == ''
             let g:sw_p_prefix = '\$\['
         endif
-        if !exists('g:sw_p_suffix')
+        if g:sw_suffix == ''
             let g:sw_p_suffix = '\]'
         endif
 

@@ -366,7 +366,7 @@ endfunction
 " Parses the profile xml file to give autocompletion for profiles{{{1
 function! sw#parse_profile_xml()
     if !exists('g:sw_config_dir')
-        return []
+        return {}
     endif
 
     let lines = readfile(g:sw_config_dir . 'WbProfiles.xml')
@@ -375,16 +375,25 @@ function! sw#parse_profile_xml()
         let s = s . ' ' . line
     endfor
 
-    let pattern = '\v\c\<object class\="[^"]{-}"\>.{-}\<void property\="name"\>.{-}\<string\>([^\<]{-})\<'
-    let result = []
-    let n = 1
-    let list = matchlist(s, pattern, 0, n)
+    let s = substitute(s, '\v\c\<object class\="java\.util\.ArrayList"\>', '', 'g')
+    let s = substitute(s, '\v\c\<object class\="(workbench\.db\.ConnectionProfile)@![^"]+"\>.{-}\<\/object\>', '', 'g')
+
+    let pattern = '\v\c(\<object class\="[^"]{-}"\>.{-}\<\/object\>)'
+    let result = {}
+    let n = 0
+    let list = matchlist(s, pattern, n, 1)
     while len(list) > 0
-        if index(result, list[1]) == -1
-            call add(result, list[1])
+        let _pattern = '\v\c^.*\<void property\="#prop#"\>[ \s\r\t]*\<string\>([^\<]+)\<.*$'
+        let name = substitute(list[1], substitute(_pattern, '#prop#', 'name', 'g'), '\1', 'g')
+        let driverName = substitute(list[1], substitute(_pattern, '#prop#', 'driverName', 'g'), '\1', 'g')
+        let group = substitute(list[1], substitute(_pattern, '#prop#', 'group', 'g'), '\1', 'g')
+        if (group != list[1])
+            let name = group . '\' . name
         endif
+        let result[name] = driverName
         let n = n + 1
-        let list = matchlist(s, pattern, 0, n)
+        let s = substitute(s, '\V' . list[0], '', 'g')
+        let list = matchlist(s, pattern, n, 1)
     endwhile
 
     return result
@@ -395,7 +404,7 @@ function! sw#autocomplete_profile(ArgLead, CmdLine, CursorPos)
 
     let result = []
 
-    for profile in profiles
+    for profile in keys(profiles)
         if profile =~ '^' . a:ArgLead
             call add(result, profile)
         endif
@@ -430,4 +439,25 @@ function! sw#autocomplete_profile_for_buffer(ArgLead, CmdLine, CursorPos)
         return sw#autocomplete_profile(a:ArgLead, a:CmdLine, a:CursorPos)
     endif
     return s:autocomplete_path(a:ArgLead, a:CmdLine, a:CursorPos)
+endfunction
+
+function! sw#display_error(msg)
+    echohl WarningMsg
+    echomsg a:msg
+    echohl None
+endfunction
+
+function! sw#get_sw_setting(setting)
+    let p1 = '\v\c^[\s \t]*' . substitute(a:setting, '\c\v\.', "\\.", 'g')
+    if exists('g:sw_config_dir')
+        let lines = readfile(g:sw_config_dir . 'workbench.settings')
+        for line in lines
+            if line =~ p1
+                let p2 = p1 . '[\s \t]*\=[\s\t ]*(.*)$'
+                return substitute(line, p2, '\1', 'g')
+            endif
+        endfor
+    endif
+    
+    return ''
 endfunction

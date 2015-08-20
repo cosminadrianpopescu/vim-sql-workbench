@@ -89,6 +89,7 @@ function! s:pipe_execute(type, cmd, wait_result, ...)
         let uid = b:unique_id
     endif
 
+    try
     python << SCRIPT
 import vim
 import socket
@@ -127,6 +128,10 @@ for line in lines:
     vim.command("let result = result . '%s\n'" % line.replace("'", "''"))
 #end for
 SCRIPT
+    catch
+        call sw#display_error("There is a problem communicating with the server on port " . port . ". Maybe the server is down?")
+        return ''
+    endtry
     if len(result) <= 3
         let result = ''
     endif
@@ -143,17 +148,22 @@ function! sw#server#fetch_result()
 endfunction
 
 function! sw#server#open_dbexplorer(profile, port)
-    return s:pipe_execute('DBE', a:profile . "\n", 1, a:port)
+    return s:pipe_execute('DBE', substitute(a:profile, '___', "\\\\", 'g') . "\n", 1, a:port)
 endfunction
 
 function! sw#server#dbexplorer(sql)
     if !exists('b:profile')
         return
     endif
-    let s = s:pipe_execute('DBE', b:profile . "\n" . a:sql . ';', 1)
+    if a:sql =~ "^:"
+        let func = substitute(a:sql, '^:', '', 'g')
+        execute "let s = " . func . "(getline('.'))"
+    else
+        let s = s:pipe_execute('DBE', substitute(b:profile, '___', "\\\\", 'g') . "\n" . a:sql . ';', 1)
+    endif
     let lines = split(s, "\n")
     let result = []
-    let rec = 0
+    let rec = 1
     for line in lines
         if line =~ '\v\c^[ \s\t\r]*$'
             let rec = 0
@@ -161,7 +171,7 @@ function! sw#server#dbexplorer(sql)
                 call add(result, '')
             endif
         endif
-        if rec
+        if rec && !(line =~ '\v^[\=]+$')
             call add(result, line)
         endif
         if line =~ '\v\c^[\=]+$'
@@ -176,7 +186,7 @@ endfunction
 
 function! sw#server#execute_sql(sql, wait_result, port)
     let sql = a:sql
-    if !(substitute(sql, "^\\v\\c\\n", ' ', 'g') =~ b:delimiter . '[ \s\t\r]*$')
+    if !(substitute(sql, "^\\v\\c\\n", ' ', 'g') =~ b:delimiter . '[ \s\t\r\n]*$')
         let sql = sql . b:delimiter . "\n"
     endif
     return s:pipe_execute('COM', sql, a:wait_result, a:port)

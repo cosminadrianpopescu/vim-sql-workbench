@@ -22,16 +22,18 @@ class SQLWorkbench(object):
     port = 5000
     results = {}
     debug = 0
+    colwidth = 120
     threads_started = 0
     vim = 'vim'
     tmp = "/tmp"
+    clock = datetime.datetime.now()
     quit       = False
     lock       = thread.allocate_lock()
     executing = thread.allocate_lock()
-    processing = thread.allocate_lock()
     new_loop = thread.allocate_lock()
     prompt_pattern_begin = '^[a-zA-Z_0-9\\.]+(\\@[a-zA-Z_0-9/]+)?\\>[ \s\t]*'
     prompt_pattern = prompt_pattern_begin + '$'
+    resultset_end_pattern = 'send_to_vim set to'
     buff = ''
     dbe_connections = {}
     identifier = None
@@ -53,11 +55,13 @@ class SQLWorkbench(object):
     def parseCustomCommand(self, command):
         if command[0] == 'identifier':
             self.identifier = command[1]
+        elif command[0] == 'colwidth':
+            self.colwidth = command[1]
         #end if
     #end def parseCustomCommand
 
     def gotCustomCommand(self, text):
-        pattern = '^!#(identifier|end)[ \\s\\t]*=[ \\s\\t]*([A-Za-z_0-9#]+)[ \\s\\t\\n\\r]*$'
+        pattern = '^!#(identifier|end|colwidth)[ \\s\\t]*=[ \\s\\t]*([A-Za-z_0-9#]+)[ \\s\\t\\n\\r]*$'
         p = re.search(pattern, text)
         if p != None:
             return [p.group(1), p.group(2)]
@@ -145,7 +149,12 @@ class SQLWorkbench(object):
 
     def spawnDbeConnection(self, profile, conn):
         self.startThread()
-        cmd = "%s -feedback=true -showProgress=false -profile=%s" % (self.cmd, profile)
+        pattern = '^([^\\\\]+)\\\\(.*)$'
+        _p = profile
+        if re.match(pattern, profile) != None:
+            _p = re.sub(pattern, '\\2', profile) + " -profileGroup=" + re.sub(pattern, '\\1', profile)
+        #end if
+        cmd = "%s -feedback=true -showProgress=false -profile=%s" % (self.cmd, _p)
         pipe = subprocess.Popen(shlex.split(cmd), stdin = subprocess.PIPE, stdout = subprocess.PIPE, bufsize = 1)
         pipe.stdin.write('set maxrows = 100;\n')
         conn.send('DISCONNECT')
@@ -181,7 +190,10 @@ class SQLWorkbench(object):
             pipe = self.dbe_connections[profile]
             data = conn.recv(4096)
             if (data):
-                data += "\nwbvardef send_to_vim = 1;\nwbvardelete send_to_vim;\n"
+                data += "\nwbsetconfig send_to_vim=1;\n"
+                if self.debug:
+                    print "SEND TO SERVER: " + data
+                #end if
                 pipe.stdin.write(data)
                 result = self.receiverDbe(pipe)
                 conn.send(self.prepareResult(result))
@@ -219,44 +231,46 @@ class SQLWorkbench(object):
     #end def readData
 
     def receiveData(self, conn, pipe, n):
-        with self.processing:
-            self.identifier = None
-            buff = self.readData(conn, n)
-            lines = buff.split("\n")
-            for line in lines:
-                if re.search('^!#', line) != None:
-                    command = self.gotCustomCommand(line)
-                    if command != None:
-                        self.parseCustomCommand(command)
-                    #end if
-                else:
+        self.clock = datetime.datetime.now()
+        self.identifier = None
+        buff = self.readData(conn, n)
+        lines = buff.split("\n")
+        for line in lines:
+            if re.search('^!#', line) != None:
+                command = self.gotCustomCommand(line)
+                if command != None:
+                    self.parseCustomCommand(command)
+                #end if
+            else:
+                if self.debug:
+                    print "SENT TO SERVER: " + line
+                #end if
+                if line != '':
+                    pipe.stdin.write(line + "\n")
+                #end if
+            #end if
+        #end for
+        with self.new_loop:
+            pipe.stdin.write("wbsetconfig send_to_vim=1;\n")
+            if self.debug:
+                print "SENT TO SERVER: wbsetconfig send_to_vim=1;"
+            #end if
+            if self.identifier == None:
+                with self.executing:
+                    data = self.prepareResult(self.buff)
+                    conn.send(data)
+                #end with
+            else:
+                with self.executing:
+                    p = self.getCaller()
                     if self.debug:
-                        print "SENT TO SERVER: " + line
+                        print "RESULT STORED FOR %s" % p.group(1) + "#" + p.group(2)
                     #end if
-                    if line != '':
-                        pipe.stdin.write(line + "\n")
+                    if p != None:
+                        self.toVim('sw#got_async_result(\\"%s\\")' % p.group(2))
                     #end if
-                #end if
-            #end for
-            with self.new_loop:
-                pipe.stdin.write("wbvardef send_to_vim = 1;\nwbvardelete send_to_vim;\n")
-                if self.identifier == None:
-                    with self.executing:
-                        data = self.prepareResult(self.buff)
-                        conn.send(data)
-                    #end with
-                else:
-                    with self.executing:
-                        p = self.getCaller()
-                        if self.debug:
-                            print "RESULT STORED FOR %s" % p.group(1) + "#" + p.group(2)
-                        #end if
-                        if p != None:
-                            self.toVim('sw#got_async_result(\\"%s\\")' % p.group(2))
-                        #end if
-                    #end with
-                #end if
-            #end with
+                #end with
+            #end if
         #end with
     #end def receiveData
 
@@ -280,7 +294,7 @@ class SQLWorkbench(object):
         elif data == 'RES':
             self.searchResult(conn, n - 3)
         elif data == 'DBE':
-            self.dbExplorer(conn, n)
+            self.dbExplorer(conn, n - 3)
         #end if
         conn.close()
     #end def newConnection
@@ -328,7 +342,7 @@ class SQLWorkbench(object):
     def receiverDbe(self, pipe):
         line = ''
         buff = ''
-        while re.search('using.*send_to_vim', line) == None:
+        while re.search(self.resultset_end_pattern, line) == None:
             line = pipe.stdout.readline()
             buff += line
             if self.debug:
@@ -349,8 +363,11 @@ class SQLWorkbench(object):
                 self.buff = ''
             #end with
             with self.executing:
-                while re.search('send_to_vim', line) == None:
+                while re.search(self.resultset_end_pattern, line) == None:
                     line = pipe.stdout.readline()
+                    if re.match('^\x1b', line) != None:
+                        continue
+                    #end if
                     if line:
                         if re.search(self.prompt_pattern_begin, line) != None:
                             if not first_prompt:
@@ -368,11 +385,15 @@ class SQLWorkbench(object):
                     #end if
                 #end while
                 if self.identifier != None:
+                    self.buff += "Total time: %.2g seconds" % (datetime.datetime.now() - self.clock).total_seconds()
+                    self.clock = datetime.datetime.now()
+
                     if self.identifier in self.results:
                         self.results[self.identifier] += "\n" + self.buff
                     else:
                         self.results[self.identifier] = self.buff
                     #end if
+
                     self.buff = ''
                 #end if
             #end with
@@ -391,7 +412,7 @@ class SQLWorkbench(object):
 
         cmd = "%s -feedback=true -showProgress=false" % (self.cmd)
         if (self.profile != None):
-            cmd += " -profile=%s" % self.profile
+            cmd += " -profile=%s" % profile
         #end if
         if self.debug:
             print "OPENING: " + cmd
@@ -412,6 +433,22 @@ class SQLWorkbench(object):
             with self.lock:
                 self.quit = True
         #end try...except
+        try:
+            pipe.stdin.write('exit\n')
+            for key in self.dbe_connections:
+                try:
+                    self.dbe_connections[key].stdin.write('exit\n')
+                except Exception:
+                    if self.debug:
+                        print "No pipe to send exit for " + key
+                    #end if
+                #end try
+            #end for
+        except Exception:
+            if self.debug:
+                print "No pipe to send exit"
+            #end if
+        #end try
         print "Waiting for server to stop..."
         while self.threads_started > 0:
             time.sleep(0.3)
