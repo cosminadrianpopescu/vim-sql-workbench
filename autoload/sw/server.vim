@@ -163,14 +163,8 @@ function! sw#server#dbexplorer(sql)
     endif
     let lines = split(s, "\n")
     let result = []
-    let rec = 1
+    let rec = 0
     for line in lines
-        if line =~ '\v\c^[ \s\t\r]*$'
-            let rec = 0
-            if (len(result) > 0)
-                call add(result, '')
-            endif
-        endif
         if rec && !(line =~ '\v^[\=]+$')
             call add(result, line)
         endif

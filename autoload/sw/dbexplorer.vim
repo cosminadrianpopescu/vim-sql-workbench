@@ -190,7 +190,7 @@ function! s:process_result_1(result, shortcut, title)
 endfunction 
 
 " Change a tab{{{2
-function! s:change_tab(command, shortcut, title)
+function! sw#dbexplorer#change_tab(command, shortcut, title)
     let result = sw#server#dbexplorer(a:command)
     call s:process_result_1(result, a:shortcut, a:title)
 endfunction
@@ -277,7 +277,7 @@ endfunction
 
 " Adds a shortcut from a tab to the current buffer{{{2
 function! s:add_shortcut(tab)
-    execute "nnoremap <buffer> <silent> " . a:tab['shortcut'] . " :call <SID>change_tab(\"" . substitute(a:tab['command'], '"', "\\\\\"", 'g') . "\", \"" . a:tab['shortcut'] . "\", \"" . a:tab['title'] . "\")<cr>"
+    execute "nnoremap <buffer> <silent> " . a:tab['shortcut'] . " :call sw#dbexplorer#change_tab(\"" . substitute(a:tab['command'], '"', "\\\\\"", 'g') . "\", \"" . a:tab['shortcut'] . "\", \"" . a:tab['title'] . "\")<cr>"
     return 1
 endfunction
 
@@ -428,7 +428,7 @@ function! sw#dbexplorer#restore_from_session(...)
     call sw#session#init_section()
     call sw#session#check()
     call s:set_special_buffer(b:profile, connection)
-    call s:change_tab(b:first_tab['command'], b:first_tab['shortcut'], b:first_tab['title'])
+    call sw#dbexplorer#change_tab(b:first_tab['command'], b:first_tab['shortcut'], b:first_tab['title'])
 endfunction
 
 function! s:set_highlights()
@@ -484,7 +484,7 @@ function! sw#dbexplorer#show_panel(profile, port, ...)
     vertical resize 60
     ""call s:set_objects_buffer()
     call s:iterate('s:get_first_tab')
-    call s:change_tab(b:first_tab['command'], b:first_tab['shortcut'], b:first_tab['title'])
+    call sw#dbexplorer#change_tab(b:first_tab['command'], b:first_tab['shortcut'], b:first_tab['title'])
     if s_below
         set splitbelow
     endif

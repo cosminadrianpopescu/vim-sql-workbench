@@ -20,6 +20,9 @@ import subprocess
 class SQLWorkbench(object):
     profile = None
     port = 5000
+    log = None
+    log_f = None
+    log_sem = thread.allocate_lock()
     results = {}
     debug = 0
     colwidth = 120
@@ -162,6 +165,7 @@ class SQLWorkbench(object):
         if self.debug:
             print "OPENING DBE CONNECTION: " + cmd
         #end if
+        self.do_log("OPENING DBE CONNECTION: " + cmd, "spawnDbeConnection")
         while 1:
             with self.lock:
                 if self.quit: break
@@ -180,6 +184,7 @@ class SQLWorkbench(object):
                 profile += char
             #end if
         #end while
+        self.do_log(profile, "dbExplorer")
         if not (profile in self.dbe_connections):
             thread.start_new_thread(self.spawnDbeConnection, (profile, conn))
             while (not profile in self.dbe_connections):
@@ -189,20 +194,24 @@ class SQLWorkbench(object):
         if n - len(profile) - 4 > 0:
             pipe = self.dbe_connections[profile]
             data = conn.recv(4096)
+            self.do_log(data, "dbExplorer")
             if (data):
                 data += "\nwbsetconfig send_to_vim=1;\n"
                 if self.debug:
                     print "SEND TO SERVER: " + data
                 #end if
                 pipe.stdin.write(data)
+                self.do_log("SEND TO SERVER: " + data, "dbExplorer#stdin.write")
                 result = self.receiverDbe(pipe)
                 conn.send(self.prepareResult(result))
+                self.do_log(self.prepareResult(result), "dbExplorer#send")
             #end if
         #end if
     #end def dbExplorer
 
     def searchResult(self, conn, n):
         data = self.readData(conn, n)
+        self.do_log(data, "searchResult")
         p = self.getCaller(data)
         if p == None:
             return
@@ -211,6 +220,7 @@ class SQLWorkbench(object):
         key = p.group(1) + "#" + p.group(2)
         if key in self.results:
             conn.send(self.prepareResult(self.results[key]))
+            self.do_log(self.prepareResult(self.results[key]), "searchResult#send")
             del self.results[key]
         #end if
     #end def searchResult
@@ -227,6 +237,7 @@ class SQLWorkbench(object):
             i += len(data)
         #end while
 
+        self.do_log(result, "readData")
         return result
     #end def readData
 
@@ -245,6 +256,7 @@ class SQLWorkbench(object):
                 if self.debug:
                     print "SENT TO SERVER: " + line
                 #end if
+                self.do_log("SENT TO SERVER: " + line, "receiveData")
                 if line != '':
                     pipe.stdin.write(line + "\n")
                 #end if
@@ -255,10 +267,12 @@ class SQLWorkbench(object):
             if self.debug:
                 print "SENT TO SERVER: wbsetconfig send_to_vim=1;"
             #end if
+            self.do_log("SENT TO SERVER: wbsetconfig send_to_vim=1;", "receiveData#stdin.write")
             if self.identifier == None:
                 with self.executing:
                     data = self.prepareResult(self.buff)
                     conn.send(data)
+                    self.do_log(data, "receiveData#send")
                 #end with
             else:
                 with self.executing:
@@ -274,6 +288,16 @@ class SQLWorkbench(object):
         #end with
     #end def receiveData
 
+    def do_log(self, what, who):
+        if self.log_f != None:
+            with self.log_sem:
+                self.log_f.write(who + ">>>>>>>>>>>>>>>\n")
+                self.log_f.write(what)
+                self.log_f.write("\n")
+            #end whith
+        #end if
+    #end def do_log
+
     def newConnection(self, conn, pipe):
         n = ''
         c = ''
@@ -283,12 +307,14 @@ class SQLWorkbench(object):
                 n += c
             #end if
         #end while
+        self.do_log(n, "newConnection")
         if (n != ''):
             n = int(n)
         else:
             n = 0
         #end if
         data = conn.recv(3)
+        self.do_log(data, "newConnection")
         if data == 'COM':
             self.receiveData(conn, pipe, n - 3)
         elif data == 'RES':
@@ -344,9 +370,11 @@ class SQLWorkbench(object):
         buff = ''
         while re.search(self.resultset_end_pattern, line) == None:
             line = pipe.stdout.readline()
+            self.do_log(line, "receiverDbe#stdout.readline")
             buff += line
             if self.debug:
                 sys.stdout.write(line)
+                self.do_log(line, "receiverDbe#stdout.write")
                 sys.stdout.flush()
             #end if
         #end while
@@ -410,6 +438,9 @@ class SQLWorkbench(object):
             sys.exit(1)
         #end if
 
+        if (self.log != None):
+            self.log_f = open(self.log, "w")
+        #end if
         cmd = "%s -feedback=true -showProgress=false" % (self.cmd)
         if (self.profile != None):
             cmd += " -profile=%s" % profile
@@ -465,6 +496,7 @@ if __name__ == "__main__":
     parser.add_option("-c", "--command",   help="The command to launch the sql workbench console",    dest="cmd",     default=None)
     parser.add_option("-v", "--vim",   help="The path to the vim executable", dest="vim",     default='vim')
     parser.add_option("-o", "--port",   help="The port on which to send the commands", dest="port",     default='5000', type = "int")
+    parser.add_option("-l", "--log", help = "Log file path", default = None, dest = "log")
     parser.add_option("-d", "--debug",   help="The debuging mode", dest="debug", default='0')
     (options,args) = parser.parse_args(sys.argv[1:], obj)
     obj.args = args

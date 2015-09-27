@@ -304,9 +304,8 @@ function! s:display_as_form(row_limits)
     endfor
     setlocal modifiable
     normal ggdG
-    for line in lines
-        put =line
-    endfor
+    call writefile(lines, g:sw_tmp . "/row")
+    execute "read " . g:sw_tmp . "/row"
     normal ggdd
     setlocal modifiable
 endfunction
@@ -381,9 +380,8 @@ function! s:get_row_limits()
 endfunction
 
 function! s:display_resultsets()
-    for line in b:resultsets
-        put =line
-    endfor
+    call writefile(b:resultsets, g:sw_tmp . "/results")
+    execute "read " . g:sw_tmp . "/results"
     call sw#session#set_buffer_variable('state', 'resultsets')
 endfunction
 
@@ -454,12 +452,7 @@ function! s:process_result(result)
     normal ggdd
     setlocal nomodifiable
     if !g:sw_switch_to_results_tab
-        let b = sw#find_buffer_by_unique_id(b:r_unique_id)
-        if b != ''
-            call sw#goto_window(b)
-        else
-            wincmd t
-        endif
+        wincmd t
     endif
     echomsg "Command completed"
 endfunction
