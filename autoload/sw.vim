@@ -152,6 +152,10 @@ endfunction
 
 " Executes an sql command{{{1
 function! sw#execute_sql(command, wait_result)
+    if (!exists('b:port'))
+        call sw#display_error("This buffer is not an sql workbench buffer.")
+        return
+    endif
     let g:sw_last_sql_query = a:command
     if (exists('w:auto_added1') && exists('w:auto_added2'))
         let s1 = substitute(w:auto_added1, "\n", '', 'g')

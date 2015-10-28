@@ -34,7 +34,7 @@ class SQLWorkbench(object):
     lock       = thread.allocate_lock()
     executing = thread.allocate_lock()
     new_loop = thread.allocate_lock()
-    prompt_pattern_begin = '^[a-zA-Z_0-9\\.]+(\\@[a-zA-Z_0-9/]+)?\\>[ \s\t]*'
+    prompt_pattern_begin = '^[a-zA-Z_0-9\\.]+(\\@[a-zA-Z_0-9/\-]+)?\\>[ \s\t]*'
     prompt_pattern = prompt_pattern_begin + '$'
     resultset_end_pattern = 'send_to_vim set to'
     buff = ''

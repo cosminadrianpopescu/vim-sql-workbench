@@ -4,7 +4,6 @@
 nmap <buffer> <C-A> :SWSqlExecuteAll!<cr>
 vmap <buffer> <C-e> :<bs><bs><bs><bs><bs>SWSqlExecuteSelected!<cr>
 nmap <buffer> <C-@> :SWSqlExecuteCurrent!<cr>
-nmap <buffer> <C-i> :SWSqlObjectInfo<cr>
 nmap <buffer> <leader>os :SWSqlObjectSource<cr>
 nmap <buffer> <C-m> <C-w>b:SWSqlToggleMessages<cr><C-w>t
 nmap <buffer> <C-c> :SWKillCurrentCommand<cr>
