@@ -133,6 +133,10 @@ if !exists('g:sw_tab_switches_between_bottom_panels')
 	let g:sw_tab_switches_between_bottom_panels = 1
 endif
 
+if !exists('g:sw_use_old_sw')
+    let g:sw_use_old_sw = 0
+endif
+
 "if !exists('g:sw_overwrite_current_command')
 "    let g:sw_overwrite_current_command = 0
 "endif

@@ -59,8 +59,8 @@ point to your `sqlwbconsole` file. If you are on Windows, it should be
 Also, if you are on Windows, you have to set the `g:sw_tmp` value in your
 `vimrc`. The default value is `/tmp`. 
 
-The communication with the DBMS is made through the `sqlwbserver` script, that
-you can find in the `resources` folder of the plugin. This is a `python`
+The communication with the DBMS is made through the `sqlwbserver.py` script, that
+you can find in the `resources/py` folder of the plugin. This is a `python`
 script (hence the need to have `python` installed on the machine) and it will
 spawn a `sqlwbconsole` instance in memory and then open a port on which will
 listen for requests. After this, whenever you want to send a command to the
@@ -70,6 +70,14 @@ command and retrieve the result which will be displayed in `VIM`.
 In order to work properly, you should keep the settings on default. Settings
 like `workbench.console.script.showtime` could affect the functionality of
 `VIM sql workbench`.
+
+*Note*:
+
+Please note that the last version of the `sqlwbserver.py` script is not
+compatible with `SQL Workbench/J` before build 118. To use it with a previous
+build, you will have to use the `-O 1` parameter. Also, f you want to use a
+version of `SQL Workbench` prior to 118, you have to set the `vim` variable
+`g:sw_use_old_sw` to `1`.
 
 Connecting to a DBMS
 ========================================
@@ -92,8 +100,8 @@ For example: `SWServerStart 5000`.
 
 If you don't want or you can't install the `vim dispatch` plugin, you can
 always start a server from command line. From your terminal, you need to
-run the `resources/sqlwbserver` script. For a list of parameters you can do
-`resources/sqlwbserver --help`. The following parameters are mandatory: 
+run the `resources/py/sqlwbserver.py` script. For a list of parameters you can
+do `resources/sqlwbserver --help`. The following parameters are mandatory: 
 
 * The path to your `sqlwbconsole` executable (`-c`). 
 
@@ -121,6 +129,11 @@ launched from any `vim` buffer connected to the same port.
 ```
 `resources/sqlwbconsole -t /tmp -c /usr/bin/sqlwbconsole.sh -o 5000`
 ```
+
+*Note*:
+
+For `SQL Workbench/J` prior to build 118, please set the `g:sw_use_old_sw`
+variable to 1
 
 ## Connecting a vim buffer
 
@@ -980,6 +993,8 @@ and
 * `g:sw_delete_tmp`: if true, then delete the temporary files created to
   execute any command. Useful for debugging. You can set it to 0 and check all
   the generated files
+* `g:sw_use_old_sw`: if true, then use an older version of `SQL Workbench/J`
+  (prior to build 118)
 
 Screen shots
 ========================================

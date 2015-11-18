@@ -73,6 +73,10 @@ function! sw#server#remove(port)
 endfunction
 
 function! s:pipe_execute(type, cmd, wait_result, ...)
+    if v:servername == ''
+        call sw#display_error("This instance of vim is not started in server mode. SQL Workbench cannot be used.")
+        return ''
+    endif
     let port = 0
     if a:0
         let port = a:1
@@ -89,6 +93,15 @@ function! s:pipe_execute(type, cmd, wait_result, ...)
         let uid = b:unique_id
     endif
 
+    let statements = 0
+    if a:type == 'COM' || a:type == 'DBE'
+        let delimiter = ';'
+        if exists('b:delimiter')
+            let delimiter = b:delimiter
+        endif
+        let statements = len(sw#sql_split(a:cmd, delimiter))
+    endif
+
     try
     python << SCRIPT
 import vim
@@ -102,11 +115,11 @@ s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 s.connect(('127.0.0.1', port))
 packet = ''
 packet += type
-if vim.eval('a:wait_result') == '0':
+if vim.eval('a:wait_result') == '0' and vim.eval('a:type') != 'VAL':
     packet += "!#identifier = " + identifier + "\n"
 #end if
 packet += cmd
-packet = str(len(packet)) + "#" + packet
+packet = str(len(packet)) + "?" + vim.eval('statements') + "#" + packet
 s.sendall(packet)
 result = ''
 if vim.eval('a:wait_result') == '1':
@@ -114,6 +127,13 @@ if vim.eval('a:wait_result') == '1':
         data = s.recv(4096)
         if (re.search('^DISCONNECT', data)):
             break
+        #end if
+        pattern = "^FEEDBACK(.*)$"
+        if (re.match(pattern, data) != None):
+            line = re.sub("^FEEDBACK(.*)$", "\\1", data)
+            vim.command("let value = input('SQL Workbench/J is asking for input for %s') . \"\\n\"" % line.replace("'", "''"))
+            s.sendall(vim.eval('value'))
+            data = '>'
         #end if
         if not data:
             break
@@ -155,11 +175,12 @@ function! sw#server#dbexplorer(sql)
     if !exists('b:profile')
         return
     endif
+    call sw#server#open_dbexplorer(b:profile, b:port)
     if a:sql =~ "^:"
         let func = substitute(a:sql, '^:', '', 'g')
         execute "let s = " . func . "(getline('.'))"
     else
-        let s = s:pipe_execute('DBE', substitute(b:profile, '___', "\\\\", 'g') . "\n" . a:sql . ';', 1)
+        let s = s:pipe_execute('DBE', substitute(b:profile, '___', "\\\\", 'g') . "\n" . a:sql . ';' . "\n", 1)
     endif
     let lines = split(s, "\n")
     let result = []
@@ -184,4 +205,8 @@ function! sw#server#execute_sql(sql, wait_result, port)
         let sql = sql . b:delimiter . "\n"
     endif
     return s:pipe_execute('COM', sql, a:wait_result, a:port)
+endfunction
+
+function! sw#server#send_feedback(val)
+    return s:pipe_execute('VAL', a:val, 0)
 endfunction

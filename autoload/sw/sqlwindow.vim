@@ -465,7 +465,7 @@ function! sw#sqlwindow#execute_sql(wait_result, sql)
         return 
     endif
     let _sql = a:sql
-    if !exists('b:no_variables')
+    if !exists('b:no_variables') && g:sw_use_old_sw
         let vars = sw#variables#extract(_sql)
         if len(vars) > 0
             for var in vars
