@@ -3,19 +3,46 @@ vim-sql-workbench.txt
 ==============================================================================
 CONTENTS                                            *vim-sql-workbench-contents*
 
-1. Introduction.................................|vim-sql-workbench-introduction|
-2. Requirements.................................|vim-sql-workbench-requirements|
-3. Connecting to a DBMS.................|vim-sql-workbench-connecting_to_a_dbms|
-4. The database explorer...............|vim-sql-workbench-the_database_explorer|
-5. The SQL buffer.............................|vim-sql-workbench-the_sql_buffer|
-6. SQL commands.................................|vim-sql-workbench-sql_commands|
-7. Searching.......................................|vim-sql-workbench-searching|
-8. Exporting.......................................|vim-sql-workbench-exporting|
-9. Sessions.........................................|vim-sql-workbench-sessions|
-10. Variables......................................|vim-sql-workbench-variables|
-11. Commands........................................|vim-sql-workbench-commands|
-12. Settings........................................|vim-sql-workbench-settings|
-13. Screen shots................................|vim-sql-workbench-screen_shots|
+1. Tutorial.........................................|vim-sql-workbench-tutorial|
+2. Introduction.................................|vim-sql-workbench-introduction|
+3. Requirements.................................|vim-sql-workbench-requirements|
+4. Connecting to a DBMS.................|vim-sql-workbench-connecting_to_a_dbms|
+5. The database explorer...............|vim-sql-workbench-the_database_explorer|
+6. The SQL buffer.............................|vim-sql-workbench-the_sql_buffer|
+7. SQL commands.................................|vim-sql-workbench-sql_commands|
+8. Searching.......................................|vim-sql-workbench-searching|
+9. Exporting.......................................|vim-sql-workbench-exporting|
+10. Sessions........................................|vim-sql-workbench-sessions|
+11. Variables......................................|vim-sql-workbench-variables|
+12. Commands........................................|vim-sql-workbench-commands|
+13. Settings........................................|vim-sql-workbench-settings|
+14. Screen shots................................|vim-sql-workbench-screen_shots|
+
+==============================================================================
+TUTORIAL                                            *vim-sql-workbench-tutorial*
+
+The following documentation is quite long. If you don't want to read through
+it, here is the quick start:
+
+*   install  from here (http://www.sql-workbench.net/)
+*   install your 'jdbc' driver for your database see
+    here (http://www.sql-workbench.net/)
+*   open a terminal window
+*   open vim
+
+Running sql queries against a DBMS:
+
+*   go to an sql statement
+*   in normal mode, do '<C-@>' (this is 'ctrl' + 'space')
+
+Opening a database explorer
+
+Note:
+
+*   '<my-profile>' is the name of a database profile create in
+    (see here (http://www.sql-workbench.net/manual/profiles.html))
+
+For more detailed explanations, please continue reading this material.
 
 ==============================================================================
 INTRODUCTION                                    *vim-sql-workbench-introduction*
@@ -92,7 +119,7 @@ like 'workbench.console.script.showtime' could affect the functionality of
 Note:
 
 Please note that the last version of the 'sqlwbserver.py' script is not
-compatible with 'SQL Workbench/J' before build 118. To use it with a previous
+compatible with  before build 118. To use it with a previous
 build, you will have to use the  parameter. Also, f you want to use a
 version of  prior to 118, you have to set the 'vim' variable
 'g:sw_use_old_sw' to '1'.
@@ -533,7 +560,7 @@ Basically the command  is sent to the DBMS and the output
 returned.
 
 ------------------------------------------------------------------------------
-GET AN OBJECT DEFINITION            *vim-sql-workbench-get_an_object_definition*
+GET AN OBJECT SOURCE                    *vim-sql-workbench-get_an_object_source*
 
 When you are with the cursor on top of any word in the buffer or in the result
 set, you can click  or your own custom shortcut. This will display

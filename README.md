@@ -1,3 +1,34 @@
+Tutorial
+========================================
+
+The following documentation is quite long. If you don't want to read through
+it, here is the quick start: 
+
+* install `SQL Workbench/J` from [here](http://www.sql-workbench.net/)
+* install your `jdbc` driver for your database see
+  [here](http://www.sql-workbench.net/)
+* open a terminal window
+* `cd ~/.vim/bundle/vim-sql-workbench/resources/py`
+* `./sqlwbserver.py -c path/to/sql-workbench/sqlwbconsole.sh -o 5000`
+* open vim
+
+*Running sql queries against a DBMS*:
+
+* `:SWSqlConnectToServer 5000 path/to/sql_buffer.sql`
+* go to an sql statement
+* in normal mode, do `<C-@>` (this is `ctrl` + `space`)
+
+*Opening a database explorer*
+
+* `:SWDbExplorer <my-profile> 5000`
+
+*Note*: 
+
+* `<my-profile>` is the name of a database profile create in `SQL Workbench/J`
+  (see [here](http://www.sql-workbench.net/manual/profiles.html))
+
+For more detailed explanations, please continue reading this material.
+
 Introduction
 ========================================
 
@@ -511,7 +542,7 @@ Alternatively you can execute the `SWSqlObjectInfo` command from normal mode.
 Basically the command `desc <object>` is sent to the DBMS and the output 
 returned. 
 
-## Get an object definition
+## Get an object source
 
 When you are with the cursor on top of any word in the buffer or in the result
 set, you can click `alt + s` or your own custom shortcut. This will display
