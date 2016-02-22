@@ -186,6 +186,14 @@ command! -bang -nargs=* SWSqlAutocomplete call sw#autocomplete#cache(<bang>0, <f
 command! -nargs=1 -complete=customlist,sw#autocomplete#complete_cache_name SWSqlAutocompleteLoad call sw#autocomplete#load(<f-args>)
 command! -nargs=1 -complete=customlist,sw#autocomplete#complete_cache_name SWSqlAutocompletePersist call sw#autocomplete#persist(<f-args>)
 command! SWSqlBufferRestore call sw#session#restore_sqlbuffer()
+command! -nargs=0 SWSqlShowAllColumns call sw#sqlwindow#show_all_columns()
+command! -nargs=1 -complete=customlist,sw#sqlwindow#complete_columns SWSqlShowOnlyColumn call sw#sqlwindow#show_only_column(<f-args>)
+command! -nargs=+ -complete=customlist,sw#sqlwindow#complete_columns SWSqlShowOnlyColumns call sw#sqlwindow#show_only_columns([<f-args>])
+command! -nargs=1 -complete=customlist,sw#sqlwindow#complete_columns SWSqlShowColumn call sw#sqlwindow#show_column(<f-args>, 1)
+command! -nargs=1 -complete=customlist,sw#sqlwindow#complete_columns SWSqlHideColumn call sw#sqlwindow#hide_column(<f-args>, 1)
+command! -nargs=1 -complete=customlist,sw#sqlwindow#complete_columns SWSqlFilterColumn call sw#sqlwindow#filter_column(<f-args>)
+command! -nargs=1 -complete=customlist,sw#sqlwindow#complete_columns SWSqlUnfilterColumn call sw#sqlwindow#un_filter_column(<f-args>)
+command! -nargs=0 SWSqlRemoveAllFilters call sw#sqlwindow#remove_all_filters()
 
 command! -nargs=+ -complete=customlist,sw#autocomplete_profile SWServerStart call sw#server#run(<f-args>)
 command! -nargs=1 SWServerStop call sw#server#stop(<f-args>)
@@ -193,7 +201,7 @@ command! -nargs=1 SWServerStop call sw#server#stop(<f-args>)
 augroup sw
 autocmd sw BufDelete,BufWipeout * call sw#session#sync()
 autocmd sw SessionLoadPost * call sw#session#restore()
-autocmd sw BufEnter * call sw#sqlwindow#close_all_result_sets()
+""autocmd sw BufEnter * call sw#sqlwindow#close_all_result_sets()
 ""autocmd sw BufEnter * call sw#session#check()
 ""autocmd sw TabEnter * call sw#dbexplorer#restore_from_session()
 

@@ -17,8 +17,11 @@
 "
 "============================================================================"
 
-let s:pattern_resultset_start = '\v^([\-]+\+?)+([\-]*)$'
+let s:pattern_resultset_start = '\v^([\-]+\+?)+([\-]*)-$'
+let s:pattern_resultset_title = '\v^RESULTSET ([0-9]+)( \()?.*$'
+let s:pattern_no_results = '\v^Query returned [0-9]+ rows?$'
 let s:pattern_empty_line = '\v^[\r \s\t]*$'
+let s:pattern_ignore_line = '\v\c^#IGNORE#$'
 let s:script_path = expand('<sfile>:p:h') . '/../../'
 
 function! s:check_sql_buffer()
@@ -27,15 +30,6 @@ function! s:check_sql_buffer()
         return 0
     endif
     return 1
-endfunction
-
-function! sw#sqlwindow#goto_statement_buffer()
-    if (exists('b:r_unique_id'))
-        let b = sw#find_buffer_by_unique_id(b:r_unique_id)
-        if b != ''
-            call sw#goto_window(b)
-        endif
-    endif
 endfunction
 
 function! s:set_shortcuts(default_var, path)
@@ -56,22 +50,17 @@ function! sw#sqlwindow#set_results_shortcuts()
     call s:set_shortcuts(g:sw_shortcuts_sql_results, "resources/shortcuts_sql_results.vim")
 endfunction
 
-function! sw#sqlwindow#hide_results()
-    let i = 1
-    let pagen = tabpagenr()
-    while i <= bufnr('$')
-        if (bufexists(i))
-            if tabpagenr() == pagen
-            endif
-        endif
-        let i = i + 1
-    endwhile
+function! s:switch_to_results_tab()
+    if !g:sw_switch_to_results_tab
+        wincmd t
+    endif
 endfunction
 
 function! sw#sqlwindow#check_results()
     let results = sw#server#fetch_result()
     if results != ''
-        call s:process_result(results)
+        call s:display_resultsets(results, 1)
+        call s:switch_to_results_tab()
     endif
 endfunction
 
@@ -162,7 +151,7 @@ function! sw#sqlwindow#extract_current_sql(...)
             return sql
         endif
     endfor
-    call sw#display_error("Could not identifiy the current query")
+    call sw#display_error("Could not identify the current query")
     return ""
 endfunction
 
@@ -185,66 +174,225 @@ function! sw#sqlwindow#extract_all_sql()
 endfunction
 
 function! sw#sqlwindow#toggle_messages()
-    if (!exists('b:messages') || !(exists('b:resultsets')))
+    if (!(exists('b:resultsets')))
         return 
     endif
     if b:state != 'resultsets' && b:state != 'messages'
         return 
     endif
     call sw#goto_window(sw#sqlwindow#get_resultset_name())
+    if bufname('%') != sw#sqlwindow#get_resultset_name()
+        return
+    endif
     if b:state == 'resultsets'
         call sw#session#set_buffer_variable('position', getpos('.'))
     endif
-    setlocal modifiable
-    normal ggdG
-    if b:state == 'messages'
-        call s:display_resultsets()
-    elseif b:state == 'resultsets'
-        call sw#session#set_buffer_variable('state', 'messages')
-        for line in b:messages
-            put =line
-        endfor
-    endif
-    normal ggdd
-    setlocal nomodifiable
-    if (exists('b:position') && b:state == 'resultsets')
-        call setpos('.', b:position)
-    endif
+    call sw#session#set_buffer_variable('state', b:state == 'resultsets' ? 'messages' : 'resultsets')
+    call s:display_resultsets('', 1)
 endfunction
 
 function! sw#sqlwindow#toggle_display()
     if (!exists('b:resultsets') || !exists('b:state'))
         return 
     endif
-    if b:state == 'form'
-        setlocal modifiable
-        normal ggdG
-        call s:display_resultsets()
-        normal ggdd
-        setlocal nomodifiable
-        if (exists('b:position'))
-            call setpos('.', b:position)
-        endif
-        return 
+    if getline('.') == ''
+        return
     endif
-    if b:state != 'resultsets'
-        return 
+    if b:state == 'form'
+        call sw#session#set_buffer_variable('state', 'resultsets')
+    elseif b:state == 'resultsets'
+        call sw#session#set_buffer_variable('state', 'form')
     endif
     let line = line('.')
     
-    if (line <= 3 || getline('.') =~ s:pattern_empty_line || getline('.') == '')
-        throw "You have to be on a row in a resultset"
+    ""if (line <= 3 || getline('.') =~ s:pattern_empty_line || getline('.') == '')
+    ""    call sw#display_error("You have to be on a row in a resultset")
+    ""    return
+    ""endif
+    if b:state == 'form' || b:state == 'resultsets'
+        call s:display_resultsets('', 1)
     endif
-    let row_limits = s:get_row_limits()
-    call s:display_as_form(row_limits)
-    call sw#session#set_buffer_variable('state', 'form')
 endfunction
 
-function! s:display_as_form(row_limits)
+function! s:get_n_resultset()
+    let resultset_start = s:get_resultset_start(s:pattern_resultset_title)
+    if resultset_start == -1
+        call sw#display_error('Could not identify the resultset')
+        return
+    endif
+
+    return substitute(getline(resultset_start), s:pattern_resultset_title, '\1', 'g') - 1
+endfunction
+
+function! s:get_idx(idx, n)
+    let n = s:get_n_resultset()
+    let idx = a:idx
+
+    if !(idx =~ '\v^[0-9]+$')
+        let idx = index(b:resultsets[a:n].header, idx)
+    endif
+
+    return idx
+endfunction
+
+function! s:get_column(column, n)
+    let column = a:column
+    if column =~ '\v^[0-9]+$'
+        let column = b:resultsets[a:n].header[column]
+    endif
+
+    return column
+endfunction
+
+function! sw#sqlwindow#show_column(idx, show_results)
+    let n = s:get_n_resultset()
+    if (n == -1)
+        return
+    endif
+
+    let a_idx = s:get_idx(a:idx, n)
+
+    let idx = index(b:resultsets[n].hidden_columns, a_idx)
+    if idx != -1
+        call remove(b:resultsets[n].hidden_columns, idx)
+    endif
+
+    
+    if a:show_results
+        call s:display_resultsets('', 1)
+    endif
+endfunction
+
+function! sw#sqlwindow#hide_column(idx, show_results)
+    let n = s:get_n_resultset()
+    if (n == -1)
+        return
+    endif
+    
+    let idx = s:get_idx(a:idx, n)
+
+    let n_columns = len(split(b:resultsets[n].lines[b:resultsets[n].resultset_start], '+'))
+    if idx < 0 || idx >= n_columns
+        call sw#display_error("The index is out of range")
+        return
+    endif
+
+    if n_columns == 1
+        call sw#display_error("Just one column in the resultset.")
+        return
+    endif
+
+    call add(b:resultsets[n].hidden_columns, idx)
+    call uniq(sort(b:resultsets[n].hidden_columns))
+
+    if a:show_results
+        call s:display_resultsets('', 1)
+    endif
+endfunction
+
+function! sw#sqlwindow#unfilter_column(column)
+    let n = s:get_n_resultset()
+    if n == -1
+        return
+    endif
+
+    let column = s:get_column(a:column, n)
+    unlet b:resultsets[n].filters[column]
+
+    call s:display_resultsets('', 1)
+endfunction
+
+function! sw#sqlwindow#filter_column(column)
+    let n = s:get_n_resultset()
+    if n == -1
+        return
+    endif
+
+    let filter = input('Please input the filter value: ')
+    if filter != ''
+        let column = s:get_column(a:column, n)
+        let b:resultsets[n].filters[column] = filter
+
+        call s:display_resultsets('', 1)
+    endif
+endfunction
+
+function! sw#sqlwindow#remove_all_filters()
+    let n = s:get_n_resultset()
+    if n == -1
+        return
+    endif
+
+    let b:resultsets[n].filters = {}
+    call s:display_resultsets('', 1)
+endfunction
+
+function! sw#sqlwindow#show_all_columns()
+    let n = s:get_n_resultset()
+    if (n == -1)
+        return
+    endif
+    let b:resultsets[n].hidden_columns = []
+    call s:display_resultsets('', 1)
+endfunction
+
+function! sw#sqlwindow#show_only_column(column)
+    let n = s:get_n_resultset()
+    if (n == -1)
+        return
+    endif
+    for column in b:resultsets[n].header
+        if column != a:column
+            call sw#sqlwindow#hide_column(column, 0)
+        endif
+    endfor
+
+    call s:display_resultsets('', 1)
+endfunction
+
+function! sw#sqlwindow#complete_columns(ArgLead, CmdLine, CursorPos)
+    let n = s:get_n_resultset()
+    if n == -1
+        return []
+    endif
+
+    let result = []
+
+    for column in b:resultsets[n].header
+        if column =~ '^' . a:ArgLead
+            call add(result, column)
+        endif
+    endfor
+
+    return result
+endfunction
+
+function! sw#sqlwindow#show_only_columns(columns)
+    let n = s:get_n_resultset()
+    if n == -1
+        return
+    endif
+
+    for column in b:resultsets[n].header
+        if index(a:columns, column) == -1
+            call sw#sqlwindow#hide_column(column, 0)
+        endif
+    endfor
+
+    call s:display_resultsets('', 1)
+endfunction
+
+function! s:display_as_form()
+    let row_limits = s:get_row_limits()
+    if len(row_limits) == 0
+        call sw#session#set_buffer_variable('state', 'resultsets')
+        call sw#session#unset_buffer_variable('position')
+        return
+    endif
     let resultset_start = s:get_resultset_start()
     call sw#session#set_buffer_variable('position', getpos('.'))
 
-    let _columns = split(b:resultsets[resultset_start - 2], '|')
+    let _columns = split(getline(resultset_start - 1), '|')
     let s_len = 0
     let columns = []
     for column in _columns
@@ -270,18 +418,18 @@ function! s:display_as_form(row_limits)
         let line = line . ': '
 
         if column == columns[len(columns) - 1]
-            let m = n + strlen(b:resultsets[a:row_limits[0] - 1]) - n
+            let m = n + strlen(getline(row_limits[0])) - n
         else
             let m = n + strlen(_columns[k]) - 1
             if (k > 0)
                 let m = m - 1
             endif
         endif
-        let cmd = "let line = line . b:resultsets[a:row_limits[0] - 1][" . n . ":" . m . "]"
+        let cmd = "let line = line . getline(row_limits[0])[" . n . ":" . m . "]"
         execute cmd
-        let i = a:row_limits[0] + 1
-        while i <= a:row_limits[1]
-            let cmd = "let txt = b:resultsets[i - 1][" . n . ":" . m . "]"
+        let i = row_limits[0] + 1
+        while i <= row_limits[1]
+            let cmd = "let txt = getline(i)[" . n . ":" . m . "]"
             execute cmd
             
             if !(txt =~ s:pattern_empty_line)
@@ -304,23 +452,28 @@ function! s:display_as_form(row_limits)
     endfor
     setlocal modifiable
     normal ggdG
-    call writefile(lines, g:sw_tmp . "/row")
-    execute "read " . g:sw_tmp . "/row"
+    call writefile(lines, g:sw_tmp . "/row-" . v:servername)
+    execute "read " . g:sw_tmp . "/row-" . v:servername
     normal ggdd
     setlocal modifiable
 endfunction
 
-function! s:get_resultset_start()
+function! s:get_resultset_start(...)
+    let pattern = s:pattern_resultset_start
+    if a:0
+        let pattern = a:1
+    endif
     let resultset_start = line('.')
     while resultset_start > 1
-        if getline(resultset_start) =~ s:pattern_resultset_start
+        if getline(resultset_start) =~ pattern
             break
         endif
         let resultset_start = resultset_start - 1
     endwhile
 
-    if (resultset_start == 1)
-        throw "Could not indentifiy the resultset"
+    if !(getline(resultset_start) =~ pattern)
+        call sw#display_error("Could not indentify the resultset")
+        return -1
     endif
 
     return resultset_start
@@ -328,13 +481,21 @@ endfunction
 
 function! s:get_row_limits()
     let resultset_start = s:get_resultset_start()
+    if resultset_start == -1
+        return []
+    endif
+
     let row_start = line('.')
     let row_end = line('.') + 1
-    let columns = split(b:resultsets[resultset_start - 2], '|')
+    let columns = split(getline(resultset_start - 1), '|')
 
     while (row_start > resultset_start)
         let n = 0
-        let line = b:resultsets[row_start - 1]
+        let line = getline(row_start)
+        if line =~ s:pattern_no_results
+            call sw#display_error("You are not on a resultset row.")
+            return []
+        endif
         let stop = 0
         for column in columns
             if line[n + strlen(column)] == '|'
@@ -353,9 +514,9 @@ function! s:get_row_limits()
         let row_start = row_start - 1
     endwhile
 
-    while (row_end < len(b:resultsets))
+    while (row_end < line('$'))
         let n = 0
-        let line = b:resultsets[row_end - 1]
+        let line = getline(row_end)
         let stop = 0
         for column in columns
             if line[n + strlen(column)] == '|'
@@ -379,49 +540,184 @@ function! s:get_row_limits()
     return [row_start, row_end]
 endfunction
 
-function! s:display_resultsets()
-    call writefile(b:resultsets, g:sw_tmp . "/results")
-    execute "read " . g:sw_tmp . "/results"
-    call sw#session#set_buffer_variable('state', 'resultsets')
-endfunction
-
-function! s:process_result(result)
-    let result = split(a:result, "\n")
-    let uid = b:unique_id
+function! s:open_resultset_window()
     let name = sw#sqlwindow#get_resultset_name()
 
-    if (bufexists(name))
-        call sw#goto_window(name)
-        setlocal modifiable
-        normal ggdG
-    else
-        let uid = b:unique_id
+    if (!bufexists(name))
         let s_below = &splitbelow
         set splitbelow
         execute "split " . name
         call sw#session#init_section()
         call sw#set_special_buffer()
         call sw#sqlwindow#set_results_shortcuts()
-        call sw#session#set_buffer_variable('r_unique_id', uid)
-        ""call sw#session#autocommand('BufEnter', 'sw#sqlwindow#set_results_shortcuts()')
-        setlocal modifiable
         if !s_below
             set nosplitbelow
         endif
     endif
 
-    if exists('b:messages')
-        call sw#session#unset_buffer_variable('messages')
+    call sw#goto_window(name)
+
+    return bufname('%') == name
+endfunction
+
+function! s:print_line(line, n_resultset, do_filter)
+    let delimiter = a:line =~ s:pattern_resultset_start ? '+' : '|'
+    let result = ''
+    let columns_length = split(b:resultsets[a:n_resultset].lines[b:resultsets[a:n_resultset].resultset_start], '+')
+
+    if len(columns_length) <= 0
+        return a:line
     endif
-    if exists('b:resultsets')
-        call sw#session#unset_buffer_variable('resultsets')
+
+    let pattern = '\v^'
+    for c in columns_length
+        let pattern .= '(.{' . len(c) . '}).?'
+    endfor
+    let pattern .= '$'
+
+    let matches = matchlist(a:line, pattern)
+    if (len(matches) == 0)
+        return a:line
     endif
-    call sw#session#set_buffer_variable('messages', [])
-    call sw#session#set_buffer_variable('resultsets', [])
+    let i = 1
+    while i < len(matches)
+        if i - 1 < len(columns_length) && a:do_filter
+            let column = s:get_column(i - 1, a:n_resultset)
+            if has_key(b:resultsets[a:n_resultset].filters, column)
+                let filter = b:resultsets[a:n_resultset].filters[column]
+                let filter_in = 1
+                if filter =~ '\v^[\>\<\=]{1,2}'
+                    let filter_in = eval(matches[i] . filter)
+                else
+                    let filter_in = matches[i] =~ filter
+                endif
+                if !filter_in
+                    return '#IGNORE#'
+                endif
+            endif
+        endif
+        if index(b:resultsets[a:n_resultset].hidden_columns, i - 1) == -1
+            let result .= matches[i]
+            if i - 1 < len(columns_length) - 1
+                let result .= delimiter
+            endif
+        endif
+
+        let i += 1
+    endwhile
+
+    if result == ''
+        let result = '#IGNORE#'
+    endif
+    return result
+endfunction
+
+function! s:add_hidden_columns(n)
+    let result = ''
+    for c in b:resultsets[a:n].hidden_columns
+        let result .= (result == '' ? '' : ', ') .  b:resultsets[a:n].header[c]
+    endfor
+
+    return result
+endfunction
+
+function! s:add_filters(n)
+    let result = ''
+    for column in keys(b:resultsets[a:n].filters)
+        let result .= (result == '' ? '' : ', ') . column . ' ' . b:resultsets[a:n].filters[column]
+    endfor
+
+    return result
+endfunction
+
+function! s:display_resultsets_continous()
+    setlocal modifiable
+    normal ggdG
+    let lines = ''
+    let messages = ''
+    let n = len(b:resultsets)
+    call reverse(b:resultsets)
+    for resultset in b:resultsets
+        let header = 'RESULTSET ' . string(n)
+        let hidden_columns = s:add_hidden_columns(len(b:resultsets) - n)
+        if hidden_columns != ''
+            let header .= " (Hidden columns: " . hidden_columns . ")"
+        endif
+        let filters = s:add_filters(len(b:resultsets) - n)
+        if (filters != '')
+            let header .= " (Filters: " . filters . ")"
+        endif
+        let header .= "\n============\n"
+        let messages .= header
+        for line in resultset.messages
+            let messages .= line . "\n"
+        endfor
+        if len(resultset.lines) > 0
+            let lines .= header
+        endif
+        let i = 0
+        for line in resultset.lines
+            let row = s:print_line(line, len(b:resultsets) - n, i > resultset.resultset_start)
+            if !(row =~ s:pattern_ignore_line)
+                let lines .= row . "\n"
+            endif
+            let i += 1
+        endfor
+        let n = n - 1
+    endfor
+    call reverse(b:resultsets)
+    let a_lines = []
+    if (b:state == 'messages')
+        let a_lines = split(messages, "\n")
+    elseif b:state == 'resultsets' && lines != ''
+        let a_lines = split(lines, "\n")
+    endif
+    if len(a_lines) > 0
+        call writefile(a_lines, g:sw_tmp . "/results-" . v:servername)
+        execute "read " . g:sw_tmp . "/results-" . v:servername
+    endif
+    normal ggdd
+    setlocal nomodifiable
+endfunction
+
+function! s:display_resultsets(result, ...)
+    if (!s:open_resultset_window())
+        call sw#display_error('Result set cannot be selected. Probably is hidden')
+        return
+    endif
+    call s:process_result(a:result)
+    let continous = 0
+    if a:0
+        let continous = a:1
+    endif
+    if b:state == 'form'
+        call s:display_as_form()
+    elseif continous
+        call s:display_resultsets_continous()
+    else
+        call s:display_resultsets_separate()
+    endif
+
+    if (exists('b:position') && b:state == 'resultsets')
+        call setpos('.', b:position)
+    endif
+endfunction
+
+function! s:process_result(result)
+    if a:result == ''
+        return
+    endif
+    let result = split(a:result, "\n")
+
+    if !exists('b:resultsets')
+        call sw#session#set_buffer_variable('resultsets', [])
+    endif
 
     let i = 0
     let mode = 'message'
     let pattern = '\v\c^[\=]+$'
+    call add(b:resultsets, {'messages': [], 'lines': [], 'hidden_columns': [], 'resultset_start': 0, 'header': [], 'filters': {}})
+    let n = len(b:resultsets) - 1
     while i < len(result)
         if result[i] =~ pattern
             let mode = 'resultset'
@@ -429,31 +725,27 @@ function! s:process_result(result)
         
         if (mode == 'resultset' && (result[i] =~ s:pattern_empty_line || result[i] == ''))
             let mode = 'message'
-            call add(b:resultsets, '')
+            call add(b:resultsets[n].lines, '')
         endif
         if (mode == 'resultset' && !(result[i] =~ pattern))
-            call add(b:resultsets, result[i])
+            call add(b:resultsets[n].lines, result[i])
         elseif mode == 'message'
-            call add(b:messages, substitute(result[i], "\r", '', 'g'))
+            call add(b:resultsets[n].messages, substitute(result[i], "\r", '', 'g'))
+        endif
+        if mode == 'resultset' && result[i] =~ s:pattern_resultset_start
+            let b:resultsets[n].resultset_start = len(b:resultsets[n].lines) - 1
         endif
         let i = i + 1
     endwhile
 
-    if len(b:resultsets) > 0
-        call s:display_resultsets()
-    else
-        for line in b:messages
-            put =line
+    if len(b:resultsets[n].lines) > 0
+        let header = split(b:resultsets[n].lines[b:resultsets[n].resultset_start - 1], '|')
+        for h in header
+            call add(b:resultsets[n].header, substitute(h, '\v^[ ]*([^ ].*[^ ])[ ]*$', '\1', 'g'))
         endfor
-        call sw#session#set_buffer_variable('state', 'messages')
-        call sw#session#unset_buffer_variable('resultsets')
     endif
 
-    normal ggdd
-    setlocal nomodifiable
-    if !g:sw_switch_to_results_tab
-        wincmd t
-    endif
+    call sw#session#set_buffer_variable('state', len(b:resultsets[n].lines) > 0 ? 'resultsets' : 'messages')
     echomsg "Command completed"
 endfunction
 
@@ -482,7 +774,8 @@ function! sw#sqlwindow#execute_sql(wait_result, sql)
     let result = sw#execute_sql(_sql, a:wait_result)
 
     if result != ''
-        call s:process_result(result)
+        call s:display_resultsets(result, 1)
+        call s:switch_to_results_tab()
     endif
 endfunction
 
@@ -493,15 +786,11 @@ function! sw#sqlwindow#get_object_info()
 
     let obj = expand('<cword>')
     let sql = "desc " . obj
-    call sw#sqlwindow#goto_statement_buffer()
     call sw#sqlwindow#execute_sql(0, sql)
 endfunction
 
 function! sw#sqlwindow#get_resultset_name()
-    if exists('b:unique_id')
-        return '__SQLResult__-' . b:unique_id
-    endif
-    return ''
+    return '__SQLResult__'
 endfunction
 
 function! sw#sqlwindow#close_all_result_sets()
@@ -550,11 +839,10 @@ function! sw#sqlwindow#check_hidden_results()
                             put =line
                         endfor
                     else
-                        call s:display_resultsets()
+                        call s:display_resultsets('', 1)
                     endif
                     normal ggdd
                     setlocal nomodifiable
-                    call sw#sqlwindow#goto_statement_buffer()
                 endif
             endif
         endif
@@ -568,6 +856,5 @@ function! sw#sqlwindow#get_object_source()
 
     let obj = expand('<cword>')
     let sql = 'WbGrepSource -searchValues="' . obj . '" -objects=' . obj . ' -types=* -useRegex=true;'
-    call sw#sqlwindow#goto_statement_buffer()
     call sw#sqlwindow#execute_sql(0, sql)
 endfunction

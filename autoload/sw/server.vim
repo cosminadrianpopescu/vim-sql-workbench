@@ -93,13 +93,20 @@ function! s:pipe_execute(type, cmd, wait_result, ...)
         let uid = b:unique_id
     endif
 
-    let statements = 0
+    let sql = a:cmd
     if a:type == 'COM' || a:type == 'DBE'
         let delimiter = ';'
         if exists('b:delimiter')
             let delimiter = b:delimiter
         endif
-        let statements = len(sw#sql_split(a:cmd, delimiter))
+        let statements = sw#sql_split(a:cmd, delimiter)
+        let sql = ''
+        for statement in statements
+            let sql .= (sql == '' ? '' : delimiter . "\n==========\n") . statement
+        endfor
+        if !(a:cmd =~ '\v^[^\n]+\n$')
+            let sql .= delimiter
+        endif
     endif
 
     try
@@ -108,7 +115,7 @@ import vim
 import socket
 import re
 identifier = vim.eval('v:servername') + "#" + vim.eval('uid')
-cmd = vim.eval('a:cmd')
+cmd = vim.eval('sql')
 port = int(vim.eval('port'))
 type = vim.eval('a:type')
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -116,10 +123,10 @@ s.connect(('127.0.0.1', port))
 packet = ''
 packet += type
 if vim.eval('a:wait_result') == '0' and vim.eval('a:type') != 'VAL':
-    packet += "!#identifier = " + identifier + "\n"
+    packet += '?' + identifier + '?'
 #end if
 packet += cmd
-packet = str(len(packet)) + "?" + vim.eval('statements') + "#" + packet
+packet = str(len(packet)) + "#" + packet
 s.sendall(packet)
 result = ''
 if vim.eval('a:wait_result') == '1':

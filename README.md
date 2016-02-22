@@ -568,6 +568,34 @@ shortcut.
 Alternatively, you can execute the `WbDisplay` command. See
 [here](http://www.sql-workbench.net/manual/console-mode.html) for more detail.
 
+## Filtering the resultset
+
+While in the result window, you can filter the displayed rows. With the cursor
+on a resultset, you can just call the `SWSqlFilterColumn` command with the
+name of the column as a parameter (you can also click `tab` after the command,
+a list of available columns will be displayed). After this you will be asked
+to insert a filter value. 
+
+The filter value can be a regular expression pattern or an arithmetic value
+(this begins with `>`, `<` or `==`)
+
+*Note*: The filtering is done row by row. This means that if you have a
+multirow column, the filtering will be done based on each row of that column
+and not by the full value. 
+
+*Note2*: If you want to filter for a mathematical value for equality, you have
+to insert two equal signs (`==`). For example: `== 471`. 
+
+## Hiding columns
+
+While in a result window, you can hide columns from a result set.
+
+With the cursor on a resultset, you can call the `SWSqlHideColumn` command.
+The command takes as an argument the name of the column to hide (there is also
+an autocomplete with the available columns).
+
+Example: `SWSqlHideColumn last_name`
+
 SQL commands
 ========================================
 
@@ -948,6 +976,74 @@ the current buffer to the server on the specified port.
 Reconnects the database explorer. This is useful if a timeout has occured
 while having a database connection opened. Then you call the
 `SWDbExplorerReconnect` in order to be able to execute commands again. 
+
+## SWSqlShowAllColumns
+
+This will unhide all hidden columns from the current result set
+
+## SWSqlShowOnlyColumn
+
+*Parameters*: 
+
+* column name: the name of the column to show
+
+This will hide all the columns from the current resultset with the exception
+of the mentioned column.
+
+*Note*: there is an autocomplete for the column name
+
+## SWSqlShowOnlyColumns
+
+* column names: a list of white space separated list of columns to be shown
+
+This will hide all the columns from the current resultset with the exception
+of the mentioned columns
+
+*Note*: there is an autocomplete for the column names
+
+## SWSqlShowColumn
+
+*Parameters*: 
+
+* column name: the name of the column to show
+
+This will show the indicated column name (assuming that it is hidden)
+
+*Note*: there is an autocomplete for the column name
+
+## SWSqlHideColumn
+
+*Parameters*:
+
+* column name: the name of the column to hide
+
+This will hide the indeicated column.
+
+*Note*: there is an autocomplete for the column name
+
+## SWSqlFilterColumn
+
+*Parameters*:
+
+* column name: the name of the column to filter
+
+This will apply a filter on the specified column. 
+
+*Note*: there is an autocomplete for the column name
+
+## SWSqlUnfilterColumn
+
+*Parameters*:
+
+* column name: the name of the column to unfilter
+
+This will remove any filters applied on the specified column.
+
+*Note*: there is an autocomplete for the column name
+
+## SWSqlRemoveAllFilters
+
+This will remove all filters applied for the current resultset.
 
 Settings
 ========================================

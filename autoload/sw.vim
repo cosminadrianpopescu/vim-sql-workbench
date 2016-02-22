@@ -35,7 +35,46 @@
 "   asynchronous (you can execute any command asynchronous)
 "   fully customizable
 "
-"
+
+function! sw#complete_ports(findstart, base, P)
+    let result = []
+    for port in s:ports
+        if port =~ '^' . a:base
+            call add(result, port)
+        endif
+    endfor
+
+    return result
+endfunction
+
+function! sw#get_server_port()
+    if exists('b:port')
+        return b:port
+    endif
+
+    let b_nr = bufnr('%')
+    let s:ports = []
+    bufdo if exists('b:port') | if (index(s:ports, b:port) < 0) | call add(s:ports, b:port) | endif | endif
+    execute "normal \<c-o>"
+
+    if len(s:ports) == 0
+        return -1
+    endif
+
+    if len(s:ports) == 1
+        return s:ports[0]
+    endif
+
+    let s:ports = s:ports
+    let prompt = ''
+    for port in s:ports
+        let prompt = prompt . (prompt == '' ? '' : ', ') . port
+    endfor
+
+    return input('Please choose a port (' . prompt . '): ', '', 'customlist,sw#complete_ports')
+endfunction
+
+let s:error = 0
 
 if !exists('g:Sw_unique_id')
     let g:Sw_unique_id = 1
@@ -119,10 +158,13 @@ function! sw#async_end()
 endfunction
 
 function! sw#got_async_result(unique_id)
+    let s:error = 0
     if s:get_buff_unique_id() == a:unique_id
         call sw#interrupt('sw#async_end()')
     endif
-    redraw!
+    if !s:error
+        redraw!
+    endif
     return ''
 endfunction
 
@@ -152,10 +194,17 @@ endfunction
 
 " Executes an sql command{{{1
 function! sw#execute_sql(command, wait_result)
-    if (!exists('b:port'))
+    let port = sw#get_server_port()
+    
+    if port == ''
+        return
+    endif
+
+    if (port == -1)
         call sw#display_error("This buffer is not an sql workbench buffer.")
         return
     endif
+
     let g:sw_last_sql_query = a:command
     if (exists('w:auto_added1') && exists('w:auto_added2'))
         let s1 = substitute(w:auto_added1, "\n", '', 'g')
@@ -177,7 +226,7 @@ function! sw#execute_sql(command, wait_result)
             endfor
         endif
     endif
-    return sw#server#execute_sql(a:command, a:wait_result, b:port)
+    return sw#server#execute_sql(a:command, a:wait_result, port)
 endfunction
 
 " Exports as ods{{{1
@@ -446,6 +495,7 @@ function! sw#autocomplete_profile_for_buffer(ArgLead, CmdLine, CursorPos)
 endfunction
 
 function! sw#display_error(msg)
+    let s:error = 1
     echohl WarningMsg
     echomsg a:msg
     echohl None
