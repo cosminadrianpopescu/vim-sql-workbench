@@ -977,6 +977,12 @@ Reconnects the database explorer. This is useful if a timeout has occured
 while having a database connection opened. Then you call the
 `SWDbExplorerReconnect` in order to be able to execute commands again. 
 
+## SWDbExplorerToggleFormDisplay
+
+If on a line in the results panel which contains a row in a resultset, then
+this row will be displayed as a form. If already displaying a form, then the
+resultset will be displayed.
+
 ## SWSqlShowAllColumns
 
 This will unhide all hidden columns from the current result set
@@ -1102,6 +1108,7 @@ and
   information is saved. You'll need to set it on Windows to work. 
 * `g:sw_switch_to_results_tab`: If true, then switch to the results buffer
   after executting a query
+* `g:sw_highlight_resultsets`: If true, highlight the resultsets headers
 
 ## Database explorer settings
 

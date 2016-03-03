@@ -1,25 +1,25 @@
-vim-sql-workbench.txt
+sw.txt
 
 ================================================================================
-CONTENTS                                              *vim-sql-workbench-contents*
+CONTENTS                                                             *sw-contents*
 
-1. Tutorial...........................................|vim-sql-workbench-tutorial|
-2. Introduction...................................|vim-sql-workbench-introduction|
-3. Requirements...................................|vim-sql-workbench-requirements|
-4. Connecting to a DBMS...................|vim-sql-workbench-connecting_to_a_dbms|
-5. The database explorer.................|vim-sql-workbench-the_database_explorer|
-6. The SQL buffer...............................|vim-sql-workbench-the_sql_buffer|
-7. SQL commands...................................|vim-sql-workbench-sql_commands|
-8. Searching.........................................|vim-sql-workbench-searching|
-9. Exporting.........................................|vim-sql-workbench-exporting|
-10. Sessions..........................................|vim-sql-workbench-sessions|
-11. Variables........................................|vim-sql-workbench-variables|
-12. Commands..........................................|vim-sql-workbench-commands|
-13. Settings..........................................|vim-sql-workbench-settings|
-14. Screen shots..................................|vim-sql-workbench-screen_shots|
+1. Tutorial..........................................................|sw-tutorial|
+2. Introduction..................................................|sw-introduction|
+3. Requirements..................................................|sw-requirements|
+4. Connecting to a DBMS..................................|sw-connecting_to_a_dbms|
+5. The database explorer................................|sw-the_database_explorer|
+6. The SQL buffer..............................................|sw-the_sql_buffer|
+7. SQL commands..................................................|sw-sql_commands|
+8. Searching........................................................|sw-searching|
+9. Exporting........................................................|sw-exporting|
+10. Sessions.........................................................|sw-sessions|
+11. Variables.......................................................|sw-variables|
+12. Commands.........................................................|sw-commands|
+13. Settings.........................................................|sw-settings|
+14. Screen shots.................................................|sw-screen_shots|
 
 ================================================================================
-TUTORIAL                                              *vim-sql-workbench-tutorial*
+TUTORIAL                                                             *sw-tutorial*
 
 The following documentation is quite long. If you don't want to read through
 it, here is the quick start:
@@ -46,7 +46,7 @@ Note:
 For more detailed explanations, please continue reading this material.
 
 ================================================================================
-INTRODUCTION                                      *vim-sql-workbench-introduction*
+INTRODUCTION                                                     *sw-introduction*
 
 This is an implementation of SQL Workbench/J (http://www.sql-workbench.net/)
 in VIM. It works with any DBMS supported by  (PostgreSQL,
@@ -83,7 +83,7 @@ CONTENTS:
 12. Screen shots
 
 ================================================================================
-REQUIREMENTS                                      *vim-sql-workbench-requirements*
+REQUIREMENTS                                                     *sw-requirements*
 
 *   `Vim` compiled with `python` support
 *   `Python` installed on the machine
@@ -126,13 +126,13 @@ version of  prior to 118, you have to set the `vim` variable
 `g:sw_use_old_sw` to `1`.
 
 ================================================================================
-CONNECTING TO A DBMS                      *vim-sql-workbench-connecting_to_a_dbms*
+CONNECTING TO A DBMS                                     *sw-connecting_to_a_dbms*
 
 First of all, you need to open have a `sqlwbserver` running in memory. There
 are two ways to run a server.
 
 --------------------------------------------------------------------------------
-STARTING A SERVER FROM VIM          *vim-sql-workbench-starting_a_server_from_vim*
+STARTING A SERVER FROM VIM                         *sw-starting_a_server_from_vim*
 
 For this you need to have the  plugin installed. If you want to
 start the server from `vim`, you can call the command `SWServerStart` with the
@@ -144,7 +144,7 @@ in order to connect to a database.
 For example: .
 
 --------------------------------------------------------------------------------
-STARTING A SERVER FROM COMMAND LINE *vim-sql-workbench-starting_a_server_from_command_line*
+STARTING A SERVER FROM COMMAND LINE       *sw-starting_a_server_from_command_line*
 
 If you don't want or you can't install the  plugin, you can
 always start a server from command line. From your terminal, you need to
@@ -183,7 +183,7 @@ For  prior to build 118, please set the `g:sw_use_old_sw`
 variable to 1
 
 --------------------------------------------------------------------------------
-CONNECTING A VIM BUFFER                *vim-sql-workbench-connecting_a_vim_buffer*
+CONNECTING A VIM BUFFER                               *sw-connecting_a_vim_buffer*
 
 Once you have a server opened, you can connect any vim buffer to that server
 using `SWSqlConnectToServer` command. Once a buffer is connected to a server,
@@ -191,7 +191,7 @@ you can send any command from that buffer to the DBMS using the
 `SWSqlExecuteCurrent`, `SWSqlExecuteSelected` or `SWSqlExecuteAll` commands.
 
 ================================================================================
-THE DATABASE EXPLORER                    *vim-sql-workbench-the_database_explorer*
+THE DATABASE EXPLORER                                   *sw-the_database_explorer*
 
 In order to open a database explorer, you need a profile.
 
@@ -224,7 +224,7 @@ The database explorer if fully customizable. You can use the existing one and
 extend it or you can create your own from scratch.
 
 --------------------------------------------------------------------------------
-CREATING A NEW DATABASE EXPLORER FROM SCRATCH *vim-sql-workbench-creating_a_new_database_explorer_from_scratch*
+CREATING A NEW DATABASE EXPLORER FROM SCRATCH *sw-creating_a_new_database_explorer_from_scratch*
 
 The database explorer is loaded from the `resources/dbexplorer.vim` file by
 default. If you want to write your own, set the `g:sw_dbexplorer_panel`
@@ -329,7 +329,7 @@ NOTES:
     procedure or for something else.
 
 --------------------------------------------------------------------------------
-EXTENDING THE DEFAULT DATABASE EXPLORER *vim-sql-workbench-extending_the_default_database_explorer*
+EXTENDING THE DEFAULT DATABASE EXPLORER *sw-extending_the_default_database_explorer*
 
 If you are happy with the default options of the database explorer (which are
 the same with the ones of ) but you just want to add your
@@ -368,7 +368,7 @@ your cursor on top of one of this links and press "H", the plugin sends to
 your DBMS . The result is displayed in the right panel.
 
 ================================================================================
-THE SQL BUFFER                                  *vim-sql-workbench-the_sql_buffer*
+THE SQL BUFFER                                                 *sw-the_sql_buffer*
 
 The SQL buffer is a normal `vim` buffer from which you can send SQL commands
 to your DBMS and in which you can use the omni completion (&lt;C-x&gt;&lt;C-o&gt;) to have
@@ -427,7 +427,7 @@ This command will be sent to the DBMS and will start a new transaction every
 time when you open this buffer.
 
 --------------------------------------------------------------------------------
-EXECUTE THE CURRENT STATEMENT    *vim-sql-workbench-execute_the_current_statement*
+EXECUTE THE CURRENT STATEMENT                   *sw-execute_the_current_statement*
 
 As stated already, you can press  in normal or insert mode or
 you can have your own shortcut. Alternatively, in normal mode, you can execute
@@ -445,7 +445,7 @@ Note: The default shortcut is mapped using `SWSqlExecuteCurrent!`, which
 means that pressing  will execute the current command asynchronous.
 
 --------------------------------------------------------------------------------
-EXECUTE THE SELECTED STATEMENT  *vim-sql-workbench-execute_the_selected_statement*
+EXECUTE THE SELECTED STATEMENT                 *sw-execute_the_selected_statement*
 
 In visual mode, you can press  or your own custom shortcut.
 Alternatively, you can execute the `SWSqlExecuteSelected` command. Please be
@@ -459,7 +459,7 @@ the exclamation mark after it (`SWSqlExecuteSelected!`). By default, this is
 mapped on . You can change this mapping.
 
 --------------------------------------------------------------------------------
-EXECUTE ALL STATEMENTS                  *vim-sql-workbench-execute_all_statements*
+EXECUTE ALL STATEMENTS                                 *sw-execute_all_statements*
 
 In visual mode, you can press  or your own custom shortcut.
 Alternatively, you can execute the `SWSqlExecuteAll` command. All the buffer
@@ -469,7 +469,7 @@ Also here you can use an exclamation mark to execute the command asynchronous,
 which is the default mapping.
 
 --------------------------------------------------------------------------------
-PROFILING                                            *vim-sql-workbench-profiling*
+PROFILING                                                           *sw-profiling*
 
 Unfortunately, the  console application does not return the
 time that it took for a command to execute. This plugin will try to do some
@@ -484,7 +484,7 @@ in console if in debug mode) or to set the maximum number of results to a low
 value (like 10). And (of course), send only one query at a time.
 
 --------------------------------------------------------------------------------
-INTELLISENSE                                      *vim-sql-workbench-intellisense*
+INTELLISENSE                                                     *sw-intellisense*
 
 `vim-sqlworkbench` plugin comes with intellisense out of the box. In order to
 take advantage of the auto complete intellisense, you have to execute first
@@ -548,7 +548,7 @@ you notice any case where the autocomplete is not working properly, please let
 me know.
 
 --------------------------------------------------------------------------------
-GET AN OBJECT DEFINITION              *vim-sql-workbench-get_an_object_definition*
+GET AN OBJECT DEFINITION                             *sw-get_an_object_definition*
 
 When with the cursor on top of any word in the buffer or in the result set,
 you can click  or your own custom shortcut. This will display that
@@ -561,7 +561,7 @@ Basically the command  is sent to the DBMS and the output
 returned.
 
 --------------------------------------------------------------------------------
-GET AN OBJECT SOURCE                      *vim-sql-workbench-get_an_object_source*
+GET AN OBJECT SOURCE                                     *sw-get_an_object_source*
 
 When you are with the cursor on top of any word in the buffer or in the result
 set, you can click  or your own custom shortcut. This will display
@@ -572,14 +572,14 @@ Alternatively, you can execute the `SWSqlObjectSource` command from normal
 mode.
 
 --------------------------------------------------------------------------------
-MAXIMUM NUMBER OF ROWS.                *vim-sql-workbench-maximum_number_of_rows.*
+MAXIMUM NUMBER OF ROWS.                               *sw-maximum_number_of_rows.*
 
 By default, the maximum number of results returned by a select is 5000. You
 can change this with the  command. See
 here (http://www.sql-workbench.net/manual/wb-commands.html#command-set)
 
 --------------------------------------------------------------------------------
-CHANGING RESULT SETS DISPLAY MODE *vim-sql-workbench-changing_result_sets_display_mode*
+CHANGING RESULT SETS DISPLAY MODE           *sw-changing_result_sets_display_mode*
 
 In the result set buffer, you can click  or your own custom shortcut
 on top of a row. This will toggle the row display to have each column on a row
@@ -590,7 +590,7 @@ Alternatively, you can execute the `WbDisplay` command. See
 here (http://www.sql-workbench.net/manual/console-mode.html) for more detail.
 
 --------------------------------------------------------------------------------
-FILTERING THE RESULTSET                *vim-sql-workbench-filtering_the_resultset*
+FILTERING THE RESULTSET                               *sw-filtering_the_resultset*
 
 While in the result window, you can filter the displayed rows. With the cursor
 on a resultset, you can just call the `SWSqlFilterColumn` command with the
@@ -609,7 +609,7 @@ Note2: If you want to filter for a mathematical value for equality, you have
 to insert two equal signs (`==`). For example: .
 
 --------------------------------------------------------------------------------
-HIDING COLUMNS                                  *vim-sql-workbench-hiding_columns*
+HIDING COLUMNS                                                 *sw-hiding_columns*
 
 While in a result window, you can hide columns from a result set.
 
@@ -620,7 +620,7 @@ an autocomplete with the available columns).
 Example: 
 
 ================================================================================
-SQL COMMANDS                                      *vim-sql-workbench-sql_commands*
+SQL COMMANDS                                                     *sw-sql_commands*
 
 You can send a sql query to the DBMS from the vim command line using the
 command `SWSqlExecuteNow`. The first parameter is the port of the server on
@@ -642,7 +642,7 @@ Note: This command will not be recorded in `g:sw_last_sql_query`. The
 delimiter is the `;`.
 
 ================================================================================
-SEARCHING                                            *vim-sql-workbench-searching*
+SEARCHING                                                           *sw-searching*
 
  comes with two very handy and powerful commands:
 `WbGrepSource` and `WbGrepData`. `vim-sqlworkbench` takes advantage of both of
@@ -650,7 +650,7 @@ them and implements searching options. You can search in objects source code,
 or you can search tables data.
 
 --------------------------------------------------------------------------------
-SEARCHING IN OBJECTS SOURCE CODE *vim-sql-workbench-searching_in_objects_source_code*
+SEARCHING IN OBJECTS SOURCE CODE             *sw-searching_in_objects_source_code*
 
 Of course, you can always execute `WbGrepSource` in a sqlbuffer and send it to
 the DBMS. For a full documentation of the command, please see
@@ -689,7 +689,7 @@ plugin. These defaults can be changed in `vimrc`.
 Example: 
 
 --------------------------------------------------------------------------------
-SEARCHING FOR DATA INSIDE TABLES *vim-sql-workbench-searching_for_data_inside_tables*
+SEARCHING FOR DATA INSIDE TABLES             *sw-searching_for_data_inside_tables*
 
 You can execute `WbGrepData` in a sql buffer and send it to the DBMS. For a
 full documentation of the command, please see
@@ -707,7 +707,7 @@ buffer. If you are in a database explorer, then the search results are
 displayed in the bottom right panel.
 
 ================================================================================
-EXPORTING                                            *vim-sql-workbench-exporting*
+EXPORTING                                                           *sw-exporting*
 
 `vim-sqlworkbench` takes advantage of the very powerful
 command, `WbExport`.
@@ -735,7 +735,7 @@ here (http://www.fsf.org/campaigns/opendocument/) or
 here (http://www.fsf.org/campaigns/opendocument/download)
 
 ================================================================================
-SESSIONS                                              *vim-sql-workbench-sessions*
+SESSIONS                                                             *sw-sessions*
 
 `vim-sqlworkbench` provides support for vim sessions. You have to have the
 `globals` enabled in your session options ().
@@ -751,7 +751,7 @@ executing any statement, you have to call the `SWSqlBufferRestore`. This will
 also restore the autocomplete list, so you will also have the autocomplete.
 
 ================================================================================
-VARIABLES                                            *vim-sql-workbench-variables*
+VARIABLES                                                           *sw-variables*
 
  supports user defined variables (you can have your queries
 sent to the database parameterized). See
@@ -770,10 +770,10 @@ Please note that in  there is no difference between `?` and
 `&`, since there is no way to get a list of vars in `vimscript` from 
 
 ================================================================================
-COMMANDS                                              *vim-sql-workbench-commands*
+COMMANDS                                                             *sw-commands*
 
 --------------------------------------------------------------------------------
-SWDBEXPLORER                                      *vim-sql-workbench-swdbexplorer*
+SWDBEXPLORER                                                     *sw-swdbexplorer*
 
 Parameters:
 
@@ -789,7 +789,7 @@ the command will autocomplete the profile names. See
 here (http://www.sql-workbench.net/manual/install.html#config-dir)
 
 --------------------------------------------------------------------------------
-SWDBEXPLORERCLOSE                            *vim-sql-workbench-swdbexplorerclose*
+SWDBEXPLORERCLOSE                                           *sw-swdbexplorerclose*
 
 Parameters;
 
@@ -804,12 +804,12 @@ If you specify a profile name, then the database explorer which is opened for
 the indicated profile is closed.
 
 --------------------------------------------------------------------------------
-SWDBEXPLORERRESTORE                        *vim-sql-workbench-swdbexplorerrestore*
+SWDBEXPLORERRESTORE                                       *sw-swdbexplorerrestore*
 
 After a session restore, this command will restore an opened database panel
 
 --------------------------------------------------------------------------------
-SWSQLEXECUTECURRENT                        *vim-sql-workbench-swsqlexecutecurrent*
+SWSQLEXECUTECURRENT                                       *sw-swsqlexecutecurrent*
 
 In an sql buffer executes the current statement. You can execute this command
 in normal or insert mode. This is the statement between two consecutive
@@ -818,18 +818,18 @@ the last identifier to the end of the file. You can change the delimiter using
 the `SWSqlDelimiter` command.
 
 --------------------------------------------------------------------------------
-SWSQLEXECUTESELECTED                      *vim-sql-workbench-swsqlexecuteselected*
+SWSQLEXECUTESELECTED                                     *sw-swsqlexecuteselected*
 
 In an sql buffer, executes the current selected statement. The command works
 in visual mode. Be careful to delete the range before typing the command.
 
 --------------------------------------------------------------------------------
-SWSQLEXECUTEALL                                *vim-sql-workbench-swsqlexecuteall*
+SWSQLEXECUTEALL                                               *sw-swsqlexecuteall*
 
 Send all sql statements from the buffer to the DBMS.
 
 --------------------------------------------------------------------------------
-SWSQLTOGGLEMESSAGES                        *vim-sql-workbench-swsqltogglemessages*
+SWSQLTOGGLEMESSAGES                                       *sw-swsqltogglemessages*
 
 If you have a result set displayed in the result set buffer, you can toggle
 between the result displayed and the messages produced by the command with
@@ -837,14 +837,14 @@ this command. The command works from the sql buffer and from the result set
 buffer.
 
 --------------------------------------------------------------------------------
-SWSQLOBJECTINFO                                *vim-sql-workbench-swsqlobjectinfo*
+SWSQLOBJECTINFO                                               *sw-swsqlobjectinfo*
 
 In a sql buffer or in a result set buffer, you can position the cursor on top
 of any word and call this command. The plugin will send to the DBMS . If the word that you selected is a valid database object, you will
 see its definition. Otherwise it will return an error.
 
 --------------------------------------------------------------------------------
-SWSQLOBJECTSOURCE                            *vim-sql-workbench-swsqlobjectsource*
+SWSQLOBJECTSOURCE                                           *sw-swsqlobjectsource*
 
 Like the previous command, if you are with your cursor on top of a word and
 call this command, the plugin will return it's source code, if the selected
@@ -852,7 +852,7 @@ word is an object in the database. Otherwise, it will return an empty result
 set.
 
 --------------------------------------------------------------------------------
-SWSQLEXECUTENOW                                *vim-sql-workbench-swsqlexecutenow*
+SWSQLEXECUTENOW                                               *sw-swsqlexecutenow*
 
 Parameters:
 
@@ -862,12 +862,12 @@ Parameters:
 Executes a query against the DBMS on the indicated port.
 
 --------------------------------------------------------------------------------
-SWSQLEXECUTENOWLASTRESULT            *vim-sql-workbench-swsqlexecutenowlastresult*
+SWSQLEXECUTENOWLASTRESULT                           *sw-swsqlexecutenowlastresult*
 
 Shows the communication with the server for the last `SWSqlExecuteNow` command.
 
 --------------------------------------------------------------------------------
-SWSQLEXPORT                                        *vim-sql-workbench-swsqlexport*
+SWSQLEXPORT                                                       *sw-swsqlexport*
 
 This command will export the last executed statement. Of course, if your last
 statement did not produced any results, you will have an empty file. The
@@ -876,7 +876,7 @@ in one of the following formats: `text`, `sqlinsert`, `sqlupdate`,
 `sqldeleteinsert`, `xml`, `ods`, `html`, `json`.
 
 --------------------------------------------------------------------------------
-SWSEARCHOBJECT                                  *vim-sql-workbench-swsearchobject*
+SWSEARCHOBJECT                                                 *sw-swsearchobject*
 
 Parameters:
 
@@ -897,7 +897,7 @@ can execute the `SWSearchObjectAdvanced` command and select all three columns
 when asked.
 
 --------------------------------------------------------------------------------
-SWSEARCHOBJECTADVANCED                  *vim-sql-workbench-swsearchobjectadvanced*
+SWSEARCHOBJECTADVANCED                                 *sw-swsearchobjectadvanced*
 
 This command will perform an advanced search. It will ask for each possible
 parameter. You can cancel the search at any time by replying with an empty
@@ -906,7 +906,7 @@ string in the columns means that you want all the columns but only the first
 row of each.
 
 --------------------------------------------------------------------------------
-SWSEARCHOBJECTDEFAULTS                  *vim-sql-workbench-swsearchobjectdefaults*
+SWSEARCHOBJECTDEFAULTS                                 *sw-swsearchobjectdefaults*
 
 Parameters:
 
@@ -922,7 +922,7 @@ parameters the values defined through the vim variables:
 *   `g:sw_search_default_compare_types`
 
 --------------------------------------------------------------------------------
-SWSEARCHDATA                                      *vim-sql-workbench-swsearchdata*
+SWSEARCHDATA                                                     *sw-swsearchdata*
 
 Parameters:
 
@@ -934,7 +934,7 @@ more details about the parameters and their default values
 here (http://www.sql-workbench.net/manual/wb-commands.html#command-search-data).
 
 --------------------------------------------------------------------------------
-SWSEARCHDATAADVANCED                      *vim-sql-workbench-swsearchdataadvanced*
+SWSEARCHDATAADVANCED                                     *sw-swsearchdataadvanced*
 
 This command will perform an advanced search in the tables data. It will ask
 for each possible parameter. You can cancel the search at any time by replying
@@ -943,7 +943,7 @@ since an empty value here means that you want to search in all the tables and
 is not an unusual request.
 
 --------------------------------------------------------------------------------
-SWSEARCHDATADEFAULTS                      *vim-sql-workbench-swsearchdatadefaults*
+SWSEARCHDATADEFAULTS                                     *sw-swsearchdatadefaults*
 
 Parameters:
 
@@ -960,7 +960,7 @@ all the parameters the values defined through the vim variables:
 *   `g:sw_search_default_exclude_lobs`
 
 --------------------------------------------------------------------------------
-SWSQLAUTOCOMPLETE                            *vim-sql-workbench-swsqlautocomplete*
+SWSQLAUTOCOMPLETE                                           *sw-swsqlautocomplete*
 
 This command enables the intellisense autocomplete for the current sql buffer.
 After this command you can use &lt;C-x&gt;&lt;C-o&gt; for autocomplete.
@@ -973,14 +973,14 @@ plugin cache.
 The arguments are useful, if you use the `g:sw_autocomplete_on_load` option.
 
 --------------------------------------------------------------------------------
-SWSQLBUFFERRESTORE                          *vim-sql-workbench-swsqlbufferrestore*
+SWSQLBUFFERRESTORE                                         *sw-swsqlbufferrestore*
 
 This command will restore the properties of the sql buffer following a vim
 session restore. This includes the autocomplete intellisense of the buffer, if
 this was active when `mksession` was executed.
 
 --------------------------------------------------------------------------------
-SWSERVERSTART                                    *vim-sql-workbench-swserverstart*
+SWSERVERSTART                                                   *sw-swserverstart*
 
 Parameters:
 
@@ -994,7 +994,7 @@ Please note that you need  plugin in order to run this from
 `vim`.
 
 --------------------------------------------------------------------------------
-SWSERVERSTOP                                      *vim-sql-workbench-swserverstop*
+SWSERVERSTOP                                                     *sw-swserverstop*
 
 Parameters:
 
@@ -1004,7 +1004,7 @@ This command will stop a server. Also the  instance in
 console mode will be closed.
 
 --------------------------------------------------------------------------------
-SWSQLCONNECTTOSERVER                      *vim-sql-workbench-swsqlconnecttoserver*
+SWSQLCONNECTTOSERVER                                     *sw-swsqlconnecttoserver*
 
 Parameters:
 
@@ -1016,19 +1016,26 @@ This will open a new buffer which will be connected to an existing
 the current buffer to the server on the specified port.
 
 --------------------------------------------------------------------------------
-SWDBEXPLORERRECONNECT                    *vim-sql-workbench-swdbexplorerreconnect*
+SWDBEXPLORERRECONNECT                                   *sw-swdbexplorerreconnect*
 
 Reconnects the database explorer. This is useful if a timeout has occured
 while having a database connection opened. Then you call the
 `SWDbExplorerReconnect` in order to be able to execute commands again.
 
 --------------------------------------------------------------------------------
-SWSQLSHOWALLCOLUMNS                        *vim-sql-workbench-swsqlshowallcolumns*
+SWDBEXPLORERTOGGLEFORMDISPLAY                   *sw-swdbexplorertoggleformdisplay*
+
+If on a line in the results panel which contains a row in a resultset, then
+this row will be displayed as a form. If already displaying a form, then the
+resultset will be displayed.
+
+--------------------------------------------------------------------------------
+SWSQLSHOWALLCOLUMNS                                       *sw-swsqlshowallcolumns*
 
 This will unhide all hidden columns from the current result set
 
 --------------------------------------------------------------------------------
-SWSQLSHOWONLYCOLUMN                        *vim-sql-workbench-swsqlshowonlycolumn*
+SWSQLSHOWONLYCOLUMN                                       *sw-swsqlshowonlycolumn*
 
 Parameters:
 
@@ -1040,7 +1047,7 @@ of the mentioned column.
 Note: there is an autocomplete for the column name
 
 --------------------------------------------------------------------------------
-SWSQLSHOWONLYCOLUMNS                      *vim-sql-workbench-swsqlshowonlycolumns*
+SWSQLSHOWONLYCOLUMNS                                     *sw-swsqlshowonlycolumns*
 
 *   column names: a list of white space separated list of columns to be shown
 
@@ -1050,7 +1057,7 @@ of the mentioned columns
 Note: there is an autocomplete for the column names
 
 --------------------------------------------------------------------------------
-SWSQLSHOWCOLUMN                                *vim-sql-workbench-swsqlshowcolumn*
+SWSQLSHOWCOLUMN                                               *sw-swsqlshowcolumn*
 
 Parameters:
 
@@ -1061,7 +1068,7 @@ This will show the indicated column name (assuming that it is hidden)
 Note: there is an autocomplete for the column name
 
 --------------------------------------------------------------------------------
-SWSQLHIDECOLUMN                                *vim-sql-workbench-swsqlhidecolumn*
+SWSQLHIDECOLUMN                                               *sw-swsqlhidecolumn*
 
 Parameters:
 
@@ -1072,7 +1079,7 @@ This will hide the indeicated column.
 Note: there is an autocomplete for the column name
 
 --------------------------------------------------------------------------------
-SWSQLFILTERCOLUMN                            *vim-sql-workbench-swsqlfiltercolumn*
+SWSQLFILTERCOLUMN                                           *sw-swsqlfiltercolumn*
 
 Parameters:
 
@@ -1083,7 +1090,7 @@ This will apply a filter on the specified column.
 Note: there is an autocomplete for the column name
 
 --------------------------------------------------------------------------------
-SWSQLUNFILTERCOLUMN                        *vim-sql-workbench-swsqlunfiltercolumn*
+SWSQLUNFILTERCOLUMN                                       *sw-swsqlunfiltercolumn*
 
 Parameters:
 
@@ -1094,15 +1101,15 @@ This will remove any filters applied on the specified column.
 Note: there is an autocomplete for the column name
 
 --------------------------------------------------------------------------------
-SWSQLREMOVEALLFILTERS                    *vim-sql-workbench-swsqlremoveallfilters*
+SWSQLREMOVEALLFILTERS                                   *sw-swsqlremoveallfilters*
 
 This will remove all filters applied for the current resultset.
 
 ================================================================================
-SETTINGS                                              *vim-sql-workbench-settings*
+SETTINGS                                                             *sw-settings*
 
 --------------------------------------------------------------------------------
-SEARCH OBJECT SOURCE SETTINGS:  *vim-sql-workbench-search_object_source_settings:*
+SEARCH OBJECT SOURCE SETTINGS:                 *sw-search_object_source_settings:*
 
 *   `g:sw_search_default_result_columns`: the default list of columns to be
     included in a search result; default value: ""
@@ -1121,7 +1128,7 @@ Note: this values apply for the `SWSearchObjectDefaults` command. The
 `SWSearchObject` command will use the defaults of .
 
 --------------------------------------------------------------------------------
-SEARCH DATA IN TABLES SETTINGS: *vim-sql-workbench-search_data_in_tables_settings:*
+SEARCH DATA IN TABLES SETTINGS:               *sw-search_data_in_tables_settings:*
 
 *   `g:sw_search_default_match_all`: whether to match or not all the search
     terms or only one (use `OR` or `AND` when performing the search); default
@@ -1147,7 +1154,7 @@ and
 here (http://www.sql-workbench.net/manual/wb-commands.html#command-search-data)
 
 --------------------------------------------------------------------------------
-SQL BUFFER SETTINGS:                      *vim-sql-workbench-sql_buffer_settings:*
+SQL BUFFER SETTINGS:                                     *sw-sql_buffer_settings:*
 
 *   `g:sw_sqlopen_command`: the vim command used by `SWSqlConnectToServer`
     command to open a buffer; possible values: `e|tabnew`; default value: "e",
@@ -1158,15 +1165,16 @@ SQL BUFFER SETTINGS:                      *vim-sql-workbench-sql_buffer_settings
     information is saved. You'll need to set it on Windows to work.
 *   `g:sw_switch_to_results_tab`: If true, then switch to the results buffer
     after executting a query
+*   `g:sw_highlight_resultsets`: If true, highlight the resultsets headers
 
 --------------------------------------------------------------------------------
-DATABASE EXPLORER SETTINGS          *vim-sql-workbench-database_explorer_settings*
+DATABASE EXPLORER SETTINGS                         *sw-database_explorer_settings*
 
 *   `g:sw_default_right_panel_type`: the file type of the bottom right panel
     when not specified; default value: "txt"
 
 --------------------------------------------------------------------------------
-GENERAL SETTINGS:                            *vim-sql-workbench-general_settings:*
+GENERAL SETTINGS:                                           *sw-general_settings:*
 
 *   `g:sw_exe`: the location of the  executable; default value:
     "sqlwbconsole.sh"
@@ -1182,7 +1190,7 @@ GENERAL SETTINGS:                            *vim-sql-workbench-general_settings
     (prior to build 118)
 
 ================================================================================
-SCREEN SHOTS                                      *vim-sql-workbench-screen_shots*
+SCREEN SHOTS                                                     *sw-screen_shots*
 
 
 

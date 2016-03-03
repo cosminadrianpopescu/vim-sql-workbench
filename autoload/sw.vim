@@ -515,3 +515,16 @@ function! sw#get_sw_setting(setting)
     
     return ''
 endfunction
+
+function! sw#put_text_in_buffer(text)
+    call sw#put_lines_in_buffer(split(a:text, "\n"))
+endfunction
+
+function! sw#put_lines_in_buffer(lines)
+    setlocal modifiable
+    normal ggdG
+    call writefile(a:lines, g:sw_tmp . "/row-" . v:servername)
+    execute "read " . g:sw_tmp . "/row-" . v:servername
+    normal ggdd
+    setlocal nomodifiable
+endfunction

@@ -137,6 +137,10 @@ if !exists('g:sw_use_old_sw')
     let g:sw_use_old_sw = 0
 endif
 
+if !exists('g:sw_highlight_resultsets')
+    let g:sw_highlight_resultsets = 1
+endif
+
 "if !exists('g:sw_overwrite_current_command')
 "    let g:sw_overwrite_current_command = 0
 "endif
@@ -170,6 +174,7 @@ command! -bang SWSqlExecuteCurrent call sw#sqlwindow#execute_sql(<bang>1, sw#sql
 command! -bang SWSqlExecuteSelected call sw#sqlwindow#execute_sql(<bang>1, sw#sqlwindow#extract_selected_sql())
 command! -bang SWSqlExecuteAll call sw#sqlwindow#execute_sql(<bang>1, sw#sqlwindow#extract_all_sql())
 command! SWSqlToggleMessages call sw#sqlwindow#toggle_messages()
+command! SWDbExplorerToggleFormDisplay call sw#dbexplorer#toggle_form_display()
 command! SWSqlToggleFormDisplay call sw#sqlwindow#toggle_display()
 command! SWSqlObjectInfo call sw#sqlwindow#get_object_info()
 command! SWSqlObjectSource call sw#sqlwindow#get_object_source()

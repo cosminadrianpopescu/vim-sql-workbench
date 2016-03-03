@@ -283,7 +283,7 @@ function! sw#sqlwindow#hide_column(idx, show_results)
     endif
 
     call add(b:resultsets[n].hidden_columns, idx)
-    call uniq(sort(b:resultsets[n].hidden_columns))
+    call sort(b:resultsets[n].hidden_columns)
 
     if a:show_results
         call s:display_resultsets('', 1)
@@ -341,6 +341,10 @@ function! sw#sqlwindow#show_only_column(column)
     if (n == -1)
         return
     endif
+    if index(b:resultsets[n].header, a:column) == -1
+        call sw#display_error("The column does not exists")
+        return
+    endif
     for column in b:resultsets[n].header
         if column != a:column
             call sw#sqlwindow#hide_column(column, 0)
@@ -382,7 +386,7 @@ function! sw#sqlwindow#show_only_columns(columns)
     call s:display_resultsets('', 1)
 endfunction
 
-function! s:display_as_form()
+function! sw#sqlwindow#display_as_form()
     let row_limits = s:get_row_limits()
     if len(row_limits) == 0
         call sw#session#set_buffer_variable('state', 'resultsets')
@@ -450,12 +454,7 @@ function! s:display_as_form()
         let line = substitute(line, '\v^([^:]+):[ ]*([0-9]+)[ ]*$', '\1: \2', 'g')
         call add(lines, line)
     endfor
-    setlocal modifiable
-    normal ggdG
-    call writefile(lines, g:sw_tmp . "/row-" . v:servername)
-    execute "read " . g:sw_tmp . "/row-" . v:servername
-    normal ggdd
-    setlocal modifiable
+    call sw#put_lines_in_buffer(lines)
 endfunction
 
 function! s:get_resultset_start(...)
@@ -560,45 +559,78 @@ function! s:open_resultset_window()
     return bufname('%') == name
 endfunction
 
-function! s:print_line(line, n_resultset, do_filter)
-    let delimiter = a:line =~ s:pattern_resultset_start ? '+' : '|'
-    let result = ''
-    let columns_length = split(b:resultsets[a:n_resultset].lines[b:resultsets[a:n_resultset].resultset_start], '+')
-
+function! s:split_into_columns(resultset)
+    let columns_length = split(a:resultset.lines[a:resultset.resultset_start], '+')
     if len(columns_length) <= 0
-        return a:line
+        return a:resultset.lines
     endif
 
-    let pattern = '\v^'
-    for c in columns_length
-        let pattern .= '(.{' . len(c) . '}).?'
+    let result = []
+    let i = 0
+    for line in a:resultset.lines
+        let matches = []
+        call add(matches, line)
+        if i > a:resultset.resultset_start - 2 && line != ''
+            for c in columns_length
+                let pattern = '\v^(.{' . len(c) . '}).?(.*)$'
+                let match = substitute(line, pattern, '\1', 'g')
+                call add(matches, match)
+                let line = substitute(line, pattern, '\2', 'g')
+            endfor
+
+        endif
+
+        call add(result, matches)
+        let i += 1
     endfor
-    let pattern .= '$'
 
-    let matches = matchlist(a:line, pattern)
-    if (len(matches) == 0)
-        return a:line
+    return result
+endfunction
+
+function! s:print_line(line_idx, n_resultset, do_filter)
+    let resultset = b:resultsets[a:n_resultset]
+
+    let line = resultset.lines[a:line_idx]
+
+    if a:line_idx <= resultset.resultset_start - 2
+        return line
     endif
+
+    let delimiter = line =~ s:pattern_resultset_start ? '+' : '|'
+    let result = ''
+
+    if (len(resultset.hidden_columns) > 0 || len(resultset.filters) > 0)
+        if !exists('resultset.columns')
+            let resultset.columns = s:split_into_columns(resultset)
+        endif
+    else
+        return line
+    endif
+
+    if len(resultset.columns[a:line_idx]) <= 1
+        return line
+    endif
+
     let i = 1
-    while i < len(matches)
-        if i - 1 < len(columns_length) && a:do_filter
+    while i < len(resultset.columns[a:line_idx])
+        if a:do_filter
             let column = s:get_column(i - 1, a:n_resultset)
-            if has_key(b:resultsets[a:n_resultset].filters, column)
-                let filter = b:resultsets[a:n_resultset].filters[column]
+            if has_key(resultset.filters, column)
+                let filter = resultset.filters[column]
                 let filter_in = 1
                 if filter =~ '\v^[\>\<\=]{1,2}'
-                    let filter_in = eval(matches[i] . filter)
+                    let filter_in = eval(resultset.columns[a:line_idx][i] . filter)
                 else
-                    let filter_in = matches[i] =~ filter
+                    let filter_in = resultset.columns[a:line_idx][i] =~ filter
                 endif
                 if !filter_in
                     return '#IGNORE#'
                 endif
             endif
         endif
-        if index(b:resultsets[a:n_resultset].hidden_columns, i - 1) == -1
-            let result .= matches[i]
-            if i - 1 < len(columns_length) - 1
+        if index(resultset.hidden_columns, i - 1) == -1 && a:line_idx >= resultset.resultset_start - 1
+            let result .= resultset.columns[a:line_idx][i]
+            if i - 1 < len(resultset.columns[a:line_idx]) - 1
                 let result .= delimiter
             endif
         endif
@@ -609,7 +641,7 @@ function! s:print_line(line, n_resultset, do_filter)
     if result == ''
         let result = '#IGNORE#'
     endif
-    return result
+    return substitute(result, '\v^(.*)[+|]$', '\1', 'g')
 endfunction
 
 function! s:add_hidden_columns(n)
@@ -630,34 +662,52 @@ function! s:add_filters(n)
     return result
 endfunction
 
-function! s:display_resultsets_continous()
-    setlocal modifiable
-    normal ggdG
-    let lines = ''
+function! s:output_content(content)
+    call sw#put_text_in_buffer(a:content)
+endfunction
+
+function! s:build_header(n)
+    let n = a:n
+    let header = 'RESULTSET ' . string(n)
+    let hidden_columns = s:add_hidden_columns(len(b:resultsets) - n)
+    if hidden_columns != ''
+        let header .= " (Hidden columns: " . hidden_columns . ")"
+    endif
+    let filters = s:add_filters(len(b:resultsets) - n)
+    if (filters != '')
+        let header .= " (Filters: " . filters . ")"
+    endif
+    let header .= "\n============\n"
+
+    return header
+endfunction
+
+function! s:display_messages()
     let messages = ''
     let n = len(b:resultsets)
     call reverse(b:resultsets)
     for resultset in b:resultsets
-        let header = 'RESULTSET ' . string(n)
-        let hidden_columns = s:add_hidden_columns(len(b:resultsets) - n)
-        if hidden_columns != ''
-            let header .= " (Hidden columns: " . hidden_columns . ")"
-        endif
-        let filters = s:add_filters(len(b:resultsets) - n)
-        if (filters != '')
-            let header .= " (Filters: " . filters . ")"
-        endif
-        let header .= "\n============\n"
-        let messages .= header
+        let messages .= s:build_header(n)
         for line in resultset.messages
             let messages .= line . "\n"
         endfor
+        let n = n - 1
+    endfor
+    call reverse(b:resultsets)
+    call s:output_content(messages)
+endfunction
+
+function! s:display_resultsets_continous()
+    let lines = ''
+    let n = len(b:resultsets)
+    call reverse(b:resultsets)
+    for resultset in b:resultsets
         if len(resultset.lines) > 0
-            let lines .= header
+            let lines .= s:build_header(n)
         endif
         let i = 0
         for line in resultset.lines
-            let row = s:print_line(line, len(b:resultsets) - n, i > resultset.resultset_start)
+            let row = s:print_line(i, len(b:resultsets) - n, i > resultset.resultset_start)
             if !(row =~ s:pattern_ignore_line)
                 let lines .= row . "\n"
             endif
@@ -666,18 +716,7 @@ function! s:display_resultsets_continous()
         let n = n - 1
     endfor
     call reverse(b:resultsets)
-    let a_lines = []
-    if (b:state == 'messages')
-        let a_lines = split(messages, "\n")
-    elseif b:state == 'resultsets' && lines != ''
-        let a_lines = split(lines, "\n")
-    endif
-    if len(a_lines) > 0
-        call writefile(a_lines, g:sw_tmp . "/results-" . v:servername)
-        execute "read " . g:sw_tmp . "/results-" . v:servername
-    endif
-    normal ggdd
-    setlocal nomodifiable
+    call s:output_content(lines)
 endfunction
 
 function! s:display_resultsets(result, ...)
@@ -691,9 +730,20 @@ function! s:display_resultsets(result, ...)
         let continous = a:1
     endif
     if b:state == 'form'
-        call s:display_as_form()
+        call sw#sqlwindow#display_as_form()
     elseif continous
-        call s:display_resultsets_continous()
+        if b:state == 'messages'
+            call s:display_messages()
+        elseif b:state == 'resultsets'
+            call s:display_resultsets_continous()
+        endif
+        if g:sw_highlight_resultsets
+            set filetype=sw
+        endif
+        setlocal foldmethod=expr
+        setlocal foldexpr=sw#sqlwindow#folding(v:lnum)
+        ""normal zMggjza
+        normal zR
     else
         call s:display_resultsets_separate()
     endif
@@ -830,19 +880,10 @@ function! sw#sqlwindow#check_hidden_results()
                     call sw#set_special_buffer()
                     call sw#sqlwindow#set_results_shortcuts()
                     ""call sw#session#autocommand('BufEnter', 'sw#sqlwindow#set_results_shortcuts()')
-                    setlocal modifiable
                     if !s_below
                         set nosplitbelow
                     endif
-                    if b:state == 'messages'
-                        for line in b:messages
-                            put =line
-                        endfor
-                    else
-                        call s:display_resultsets('', 1)
-                    endif
-                    normal ggdd
-                    setlocal nomodifiable
+                    call s:display_resultsets('', 1)
                 endif
             endif
         endif
@@ -857,4 +898,21 @@ function! sw#sqlwindow#get_object_source()
     let obj = expand('<cword>')
     let sql = 'WbGrepSource -searchValues="' . obj . '" -objects=' . obj . ' -types=* -useRegex=true;'
     call sw#sqlwindow#execute_sql(0, sql)
+endfunction
+
+function! sw#sqlwindow#folding(lnum)
+    if (a:lnum == 1)
+        let b:fold_level = 0
+    endif
+    if getline(a:lnum) =~ '\v^[\=]+$'
+        let b:fold_level += 1
+        return '>' . b:fold_level
+    endif
+    if getline(a:lnum) =~ '\v^$'
+        let result = '<' . b:fold_level
+        let b:fold_level -= 1
+        return result
+    endif
+
+    return -1
 endfunction

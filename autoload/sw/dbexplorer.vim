@@ -153,10 +153,10 @@ function! s:process_result_1(result, shortcut, title)
     call sw#goto_window('__Info__-' . b:profile)
     call sw#session#set_buffer_variable('current_tab', a:shortcut)
     call sw#goto_window('__SQL__-' . b:profile)
-    call sw#session#set_buffer_variable('current_tab', a:shortcut)
     setlocal modifiable
     normal! ggdG
     setlocal nomodifiable
+    call sw#session#set_buffer_variable('current_tab', a:shortcut)
     call sw#goto_window('__DBExplorer__-' . b:profile)
     if (exists('b:mappings'))
         for m in b:mappings
@@ -164,13 +164,7 @@ function! s:process_result_1(result, shortcut, title)
         endfor
     endif
     call sw#session#set_buffer_variable('current_tab', a:shortcut)
-    setlocal modifiable
-    normal! ggdG
-    for line in result
-        put =line
-    endfor
-    normal! ggdd
-    setlocal nomodifiable
+    call sw#put_lines_in_buffer(result)
     call s:set_info_buffer()
     call sw#goto_window('__DBExplorer__-' . b:profile)
     call sw#session#set_buffer_variable('mappings', [])
@@ -193,6 +187,21 @@ endfunction
 function! sw#dbexplorer#change_tab(command, shortcut, title)
     let result = sw#server#dbexplorer(a:command)
     call s:process_result_1(result, a:shortcut, a:title)
+endfunction
+
+function! sw#dbexplorer#toggle_form_display()
+    if (!exists('b:state'))
+        call sw#display_error("Not in a results panel")
+        return
+    endif
+    if b:state == 'form'
+        call sw#session#set_buffer_variable('state', 'resultsets')
+        call sw#put_text_in_buffer(b:sw_content)
+    else
+        call sw#session#set_buffer_variable('state', 'form')
+        call sw#session#set_buffer_variable('sw_content', join(getline(1, '$'), "\n"))
+        call sw#sqlwindow#display_as_form()
+    endif
 endfunction
 
 function! s:process_result_2(result, tab_shortcut, shortcut, cmd)
@@ -222,13 +231,8 @@ function! s:process_result_2(result, tab_shortcut, shortcut, cmd)
     endif
     call sw#goto_window('__SQL__-' . b:profile)
     call sw#session#set_buffer_variable('last_cmd', a:cmd)
-    setlocal modifiable
-    normal! ggdG
-    for line in result
-        put =line
-    endfor
-    normal! ggdd
-    setlocal nomodifiable
+    call sw#session#set_buffer_variable('state', 'resultsets')
+    call sw#put_lines_in_buffer(result)
     let pattern = '\v^.*-- AFTER(.*)$'
     if a:cmd =~ pattern
         let after = substitute(a:cmd, pattern, '\1', 'g')
@@ -296,19 +300,18 @@ endfunction
 " Set the help buffer{{{2
 function! s:set_info_buffer()
     call sw#goto_window('__Info__-' . b:profile)
-    setlocal modifiable
-    normal! ggdG
-    put ='The current profile is ' . b:profile
+    let lines = []
+    call add(lines, 'The current profile is ' . substitute(b:profile, '___', "\\", 'g'))
     call sw#session#set_buffer_variable('txt', '')
     call s:iterate('s:display_tabs')
-    put =b:t1_shortcuts
-    put =b:txt
+    call add(lines, b:t1_shortcuts)
+    call add(lines, b:txt)
 
     if b:current_tab != ''
         call sw#session#set_buffer_variable('shortcut', b:current_tab)
         call s:iterate('s:find_tab_by_shortcut')
         if (exists('b:tab'))
-            put =b:t2_shortcuts
+            call add(lines, b:t2_shortcuts)
             let txt = ''
             for panel in b:tab['panels']
                 if txt != ''
@@ -316,12 +319,11 @@ function! s:set_info_buffer()
                 endif
                 let txt = txt . panel['title'] . ' (' . panel['shortcut'] . ')'
             endfor
-            put =txt
+            call add(lines, txt)
         endif
     endif
-    put =b:t3_shortcuts . ': Export (E) \| Open in new buffer (B)'
-    normal! ggdd
-    setlocal nomodifiable
+    call add(lines, b:t3_shortcuts . ': Export (E) \| Open in new buffer (B)')
+    call sw#put_lines_in_buffer(lines)
 endfunction
 
 " Sets the objects initial state{{{2
