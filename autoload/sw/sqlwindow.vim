@@ -18,8 +18,8 @@
 "============================================================================"
 
 let s:pattern_resultset_start = '\v^([\-]+\+?)+([\-]*)-$'
-let s:pattern_resultset_title = '\v^RESULTSET ([0-9]+)( \()?.*$'
-let s:pattern_no_results = '\v^Query returned [0-9]+ rows?$'
+let s:pattern_resultset_title = '\v^[\=]SQL ([0-9]+)'
+let s:pattern_no_results = '\v^Query returned ([0-9]+) rows?$'
 let s:pattern_empty_line = '\v^[\r \s\t]*$'
 let s:pattern_ignore_line = '\v\c^#IGNORE#$'
 let s:script_path = expand('<sfile>:p:h') . '/../../'
@@ -668,16 +668,22 @@ endfunction
 
 function! s:build_header(n)
     let n = a:n
-    let header = 'RESULTSET ' . string(n)
+    let title = b:resultsets[len(b:resultsets) - n].title
+    let header = '=SQL ' . string(n) . (title == '' ? '' : ': ') . title
+    let rows = b:resultsets[len(b:resultsets) - n].rows
+    if rows != 0
+        let header .= ' (' . rows . ' rows)'
+    endif
     let hidden_columns = s:add_hidden_columns(len(b:resultsets) - n)
     if hidden_columns != ''
-        let header .= " (Hidden columns: " . hidden_columns . ")"
+        let header .= "\n(Hidden columns: " . hidden_columns . ")"
     endif
     let filters = s:add_filters(len(b:resultsets) - n)
     if (filters != '')
-        let header .= " (Filters: " . filters . ")"
+        let header .= "\n(Filters: " . filters . ")"
     endif
-    let header .= "\n============\n"
+
+    let header .= "\n"
 
     return header
 endfunction
@@ -766,21 +772,35 @@ function! s:process_result(result)
     let i = 0
     let mode = 'message'
     let pattern = '\v\c^[\=]+$'
-    call add(b:resultsets, {'messages': [], 'lines': [], 'hidden_columns': [], 'resultset_start': 0, 'header': [], 'filters': {}})
+    call add(b:resultsets, {'messages': [], 'lines': [], 'hidden_columns': [], 'resultset_start': 0, 'header': [], 'filters': {}, 'title': '', 'rows': 0})
     let n = len(b:resultsets) - 1
     while i < len(result)
         if result[i] =~ pattern
             let mode = 'resultset'
         endif
-        
+
+        let pattern_title = '\v^----  ?(.*)$'
+        if result[i] =~ pattern_title
+            let b:resultsets[n].title = substitute(result[i], pattern_title, '\1', 'g')
+            let i += 1
+            continue
+        endif
         if (mode == 'resultset' && (result[i] =~ s:pattern_empty_line || result[i] == ''))
             let mode = 'message'
             call add(b:resultsets[n].lines, '')
         endif
         if (mode == 'resultset' && !(result[i] =~ pattern))
-            call add(b:resultsets[n].lines, result[i])
-        elseif mode == 'message'
-            call add(b:resultsets[n].messages, substitute(result[i], "\r", '', 'g'))
+            if result[i] =~ s:pattern_no_results
+                let b:resultsets[n].rows = substitute(result[i], s:pattern_no_results, '\1', 'g')
+            else
+                call add(b:resultsets[n].lines, result[i])
+            endif
+        elseif mode == 'message' && result[i] != ''
+            let line = substitute(result[i], "\r", '', 'g')
+            call add(b:resultsets[n].messages, line)
+            if line =~ '\v^Execution time: .*$'
+                call add(b:resultsets[n].messages, "")
+            endif
         endif
         if mode == 'resultset' && result[i] =~ s:pattern_resultset_start
             let b:resultsets[n].resultset_start = len(b:resultsets[n].lines) - 1
@@ -807,6 +827,11 @@ function! sw#sqlwindow#execute_sql(wait_result, sql)
         return 
     endif
     let _sql = a:sql
+    let title = substitute(a:sql, '\v\n', ' ', 'g')
+    if strlen(title) > 255
+        let title = title[:255] . '...'
+    endif
+    let _sql = '-- @wbresult ' . title . "\n" . _sql
     if !exists('b:no_variables') && g:sw_use_old_sw
         let vars = sw#variables#extract(_sql)
         if len(vars) > 0
@@ -904,7 +929,7 @@ function! sw#sqlwindow#folding(lnum)
     if (a:lnum == 1)
         let b:fold_level = 0
     endif
-    if getline(a:lnum) =~ '\v^[\=]+$'
+    if getline(a:lnum) =~ s:pattern_resultset_title
         let b:fold_level += 1
         return '>' . b:fold_level
     endif

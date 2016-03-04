@@ -8,8 +8,10 @@ import socket
 import re
 import string
 import shlex
+from collections import deque
 import sys
 import thread
+import uuid
 import time
 import subprocess
 
@@ -27,35 +29,21 @@ class SQLWorkbench(object):
     vim = 'vim'
     tmp = "/tmp"
     quit       = False
-    current_conn = None
     lock       = thread.allocate_lock()
-    executing = thread.allocate_lock()
     new_loop = thread.allocate_lock()
     prompt_pattern_begin = '^[a-zA-Z_0-9\\.]+(\\@[a-zA-Z_0-9/\-]+)*\\>[ \s\t]*'
     prompt_pattern = prompt_pattern_begin + '$'
     resultset_end_pattern = '^.*Execution time: [0-9\\. mh]+s[\s\t \n]*$'
-    wait_input_pattern = '^([a-zA-Z_][a-zA-Z0-9_]*( \\[[^\\]]+\\])?: |([^>]+> )?Username|([^>]+> )?Password: |([^>]+>[ ]+)?Do you want to run the command UPDATE\\? \\(Yes/No/All\\)[ ]+)$'
+    wait_input_pattern = '^([a-zA-Z_][a-zA-Z0-9_]*( \\[[^\\]]+\\])?: |([^>]+> )?([^>]+> )*Username|([^>]+> )*Password: |([^>]+>[ ]+)?Do you want to run the command UPDATE\\? \\(Yes/No/All\\)[ ]+)$'
     in_resultset = 0
     wait_input = 0
     begin_resultset = '^\\-\\-[\\-\\+\\s\\t ]+$'
     buff = ''
     dbe_connections = {}
     statements_lock = thread.allocate_lock()
-    statements = 1
+    processing = deque([])
+    statements = {}
     identifier = None
-
-    def set_statements(self, n):
-        with self.statements_lock:
-            self.statements += n
-        #end with
-    #end def set_statements
-
-    def get_statements(self):
-        with self.statements_lock:
-            result = self.statements
-        #end with
-        return result
-    #end def get_statements
 
     def startThread(self):
         # if self.debug:
@@ -79,48 +67,19 @@ class SQLWorkbench(object):
         pipe.stdin.write(self.get_default_options())
     #end def set_default_options
 
-    def parseCustomCommand(self, command):
-        if command[0] == 'identifier':
-            self.identifier = command[1]
-        elif command[0] == 'colwidth':
-            self.colwidth = command[1]
-        #end if
-    #end def parseCustomCommand
-
-    def gotCustomCommand(self, text):
-        pattern = '^!#(identifier|end|colwidth)[ \\s\\t]*=[ \\s\\t]*([A-Za-z_0-9#]+)[ \\s\\t\\n\\r]*$'
-        p = re.search(pattern, text)
-        if p != None:
-            return [p.group(1), p.group(2)]
-        #end if
-        return None
-    #end def gotCustomCommand
-
     def getCaller(self, identifier = None):
-        if identifier == None:
-            i = self.identifier
-        else:
-            i = identifier
-        #end if
-        return re.search('^([^#]+)#?([^\\r\\n]*)[\\n\\r]?$', i)
+        return re.search('^([^#]+)#?([^\\r\\n]*)[\\n\\r]?$', identifier)
     #end def getVimServerName
 
-    def toVim(self, cmd, param = "--remote-expr"):
+    def toVim(self, cmd, vim_server, param = "--remote-expr"):
         if self.quit:
             return
         #end if
-        if self.identifier == None:
-            return 
+        _cmd = '%s --servername %s -u NONE -U none %s "%s"' % (self.vim, vim_server, param, cmd)
+        if self.debug:
+            print "SENDING TO VIM: " + _cmd
         #end if
-        p = self.getCaller()
-        if p != None:
-            vim_server = p.group(1)
-            _cmd = '%s --servername %s -u NONE -U none %s "%s"' % (self.vim, vim_server, param, cmd)
-            if self.debug:
-                print "SENDING TO VIM: " + _cmd
-            #end if
-            os.system(_cmd)
-        #end if
+        os.system(_cmd)
     #end def toVim
 
     def prepareResult(self, text):
@@ -141,25 +100,25 @@ class SQLWorkbench(object):
             #end if
 
             if record == 1 and re.search(pattern1, line) == None and re.search(pattern2, line) == None:
-                if re.search('send_to_vim', line) == None:
-                    if i < len(lines) - 1:
-                        if re.search(self.begin_resultset, lines[i + 1]) != None:
-                            to_add_results = True
-                            result += "--results--"
-                        #end if
+                if i < len(lines) - 1:
+                    if re.search(self.begin_resultset, lines[i + 1]) != None:
+                        to_add_results = True
+                        result += "--results--"
                     #end if
+                #end if
 
-                    p = re.search('^\\(([0-9]+) Row[s]?\\)', line)
-                    if p != None:
-                        to_add_results = False
-                        result = result.replace('--results--', 
-                                '\n==============================================================================\n' + 
-                                'Query returned ' + p.group(1) + ' row' + ('s' if int(p.group(1)) > 1 else '') + '\n')
-                    else:
+                p = re.search('^\\(([0-9]+) Row[s]?\\)', line)
+                if p != None:
+                    to_add_results = False
+                    result = result.replace('--results--', 
+                            '\n==============================================================================\n' + 
+                            'Query returned ' + p.group(1) + ' row' + ('s' if int(p.group(1)) > 1 else '') + '\n')
+                else:
+                    while re.match(self.prompt_pattern_begin, line) != None:
                         line = re.sub(self.prompt_pattern_begin, '', line)
-                        line = re.sub("^(\\.\\.> )+", '', line)
-                        result = result + line + "\n"
-                    #end if
+                    #end while
+                    line = re.sub("^(\\.\\.> )+", '', line)
+                    result = result + line + "\n"
                 #end if
             #end if
             i += 1
@@ -177,7 +136,7 @@ class SQLWorkbench(object):
         return result
     #end def prepareResult
 
-    def spawnDbeConnection(self, profile, conn):
+    def spawnDbeConnection(self, profile):
         self.startThread()
         pattern = '^([^\\\\]+)\\\\(.*)$'
         _p = profile
@@ -200,7 +159,7 @@ class SQLWorkbench(object):
         self.stopThread()
     #end def spawnDbeConnection
 
-    def dbExplorer(self, conn, n, statements):
+    def dbExplorer(self, conn, n):
         profile = ''
         char = ''
         while char != '\n':
@@ -210,32 +169,37 @@ class SQLWorkbench(object):
             #end if
         #end while
         self.do_log(profile, "dbExplorer")
-        self.current_conn = conn
 
         if not (profile in self.dbe_connections):
-            thread.start_new_thread(self.spawnDbeConnection, (profile, conn))
+            thread.start_new_thread(self.spawnDbeConnection, (profile, ))
             while (not profile in self.dbe_connections):
                 time.sleep(0.1)
             #end while
             line = ''
-            while re.match('^Connection to "[^"]+" successful$', line) == None:
-                line = self.readline(self.dbe_connections[profile]).replace("\n", "").replace("\r", "")
+            while re.match('^(Connection to "[^"]+" successful|Connection failed)$', line) == None:
+                line = self.readline(self.dbe_connections[profile], None, conn).replace("\n", "").replace("\r", "")
             #end while
             sql = self.get_default_options() + 'set maxrows = 100;\n'
             self.dbe_connections[profile].stdin.write(sql)
-            txt = self.receiverDbe(self.dbe_connections[profile], 2)
+            txt = self.receiverDbe(self.dbe_connections[profile], conn, 2)
         #end if
         if n - len(profile) - 4 > 0:
             pipe = self.dbe_connections[profile]
-            data = conn.recv(4096)
+            data = conn.recv(n - len(profile))
             self.do_log(data, "dbExplorer")
             if (data):
+                statements = data.split("\n==========\n")
+                sql = ''
+                for statement in statements:
+                    sql = sql + statement
+                #end for
+                sql = sql + "\n"
                 if self.debug:
-                    print "SEND TO SERVER: " + data
+                    print "SEND TO SERVER: " + sql
                 #end if
-                pipe.stdin.write(data)
-                self.do_log("SEND TO SERVER: " + data, "dbExplorer#stdin.write")
-                result = self.receiverDbe(pipe, statements)
+                pipe.stdin.write(sql)
+                self.do_log("SEND TO SERVER: " + sql, "dbExplorer#stdin.write")
+                result = self.receiverDbe(pipe, conn, len(statements))
                 conn.send(self.prepareResult(result))
                 self.do_log(self.prepareResult(result), "dbExplorer#send")
             #end if
@@ -245,18 +209,21 @@ class SQLWorkbench(object):
 
     def searchResult(self, conn, n):
         data = self.readData(conn, n)
+        identifier = data.replace('?', '')
         self.do_log(data, "searchResult")
-        p = self.getCaller(data)
-        if p == None:
-            return
+        keys = []
+        for key in self.statements:
+            statement = self.statements[key]
+            if statement['identifier'] == identifier and statement['result'] != None:
+                conn.send(self.prepareResult(statement['result']))
+                self.do_log(self.prepareResult(statement['result']), "searchResult#send")
+                keys.append(key)
+            #end if
         #end if
 
-        key = p.group(1) + "#" + p.group(2)
-        if key in self.results:
-            conn.send(self.prepareResult(self.results[key]))
-            self.do_log(self.prepareResult(self.results[key]), "searchResult#send")
-            del self.results[key]
-        #end if
+        for key in keys:
+            del self.statements[key]
+        #end for
     #end def searchResult
 
     def readData(self, conn, n):
@@ -285,51 +252,69 @@ class SQLWorkbench(object):
         pipe.stdin.write(val + "\n")
     #end def gotFeedback
 
-    def receiveData(self, conn, pipe, n):
-        self.identifier = None
-        buff = self.readData(conn, n)
-        lines = buff.split("\n")
-        i = 0
-        lines = [line for line in lines if line != '']
-        for line in lines:
-            if re.search('^!#', line) != None:
-                command = self.gotCustomCommand(line)
-                if command != None:
-                    self.parseCustomCommand(command)
-                #end if
-            else:
-                if self.debug:
-                    print "SENT TO SERVER: " + line
-                #end if
-                self.do_log("SENT TO SERVER: " + line, "receiveData")
-
-                if (self.identifier == None):
-                    self.current_conn = conn
-                #end if
-
-                pipe.stdin.write(line + "\n")
+    def add_statement(self, sql, identifier, pipe, conn):
+        with self.statements_lock:
+            statement = {'identifier': identifier, 'sql': sql, 'result': None}
+            _uuid = str(uuid.uuid4())
+            self.statements[_uuid] = statement
+            self.processing.append({'uuid': _uuid, 'identifier': identifier, 'conn': conn})
+            if self.debug:
+                print "SENT TO SERVER: " + sql
             #end if
-            i = i + 1
+            self.do_log("SENT TO SERVER: " + sql, "add_statement")
+            pipe.stdin.write(sql + "\n")
+            return _uuid
+        #end with
+    #end def add_statement
+
+    def receiveData(self, conn, pipe, n):
+        buff = self.readData(conn, n)
+        buff = buff.replace("\n", "#NEWLINE#")
+        pattern = "^\\?([^\\?]+)\\?(.*)$"
+        identifier = None
+        uuids = []
+        if re.match(pattern, buff):
+            identifier = re.sub(pattern, "\\1", buff)
+            buff = re.sub(pattern, "\\2", buff)
+        #end if
+        buff = buff.replace("#NEWLINE#", "\n")
+        statements = buff.split("\n==========\n")
+        for statement in statements:
+            if (identifier == None):
+                self.current_conn = conn
+            #end if
+
+            uuid = self.add_statement(statement, identifier, pipe, conn)
+            uuids.append(uuid)
         #end for
-        with self.new_loop:
-            if self.identifier == None:
-                while self.get_statements() > 0:
+        processed = False
+        while not processed:
+            processed = True
+            for uuid in uuids:
+                if self.statements[uuid]['result'] == None:
                     time.sleep(0.1)
-                #end while
-                data = self.prepareResult(self.buff)
+                    processed = False
+                    break
+                #end if
+            #end for
+        #end while
+        with self.new_loop:
+            if identifier == None:
+                data = ''
+                for uuid in uuids:
+                    if data != '':
+                        data = data + "\n"
+                    #endif
+                    data = data + self.prepareResult(self.statements[uuid]['result'])
+                    del self.statements[uuid]
+                #end for
                 conn.send(data)
                 self.do_log(data, "receiveData#send")
                 self.current_conn = None
             else:
-                with self.executing:
-                    p = self.getCaller()
-                    if self.debug:
-                        print "RESULT STORED FOR %s" % p.group(1) + "#" + p.group(2)
-                    #end if
-                    if p != None:
-                        self.toVim('sw#got_async_result(\\"%s\\")' % p.group(2))
-                    #end if
-                #end with
+                p = self.getCaller(identifier)
+                self.toVim('sw#got_async_result(\\"%s\\")' % p.group(2), p.group(1))
+            #end if
             #end if
         #end with
     #end def receiveData
@@ -355,21 +340,18 @@ class SQLWorkbench(object):
         #end while
         self.do_log(n, "newConnection")
         if (n != ''):
-            parts = n.split('?')
-            n = int(parts[0])
-            statements = int(parts[1])
+            n = int(n)
         else:
             n = 0
         #end if
         data = conn.recv(3)
         self.do_log(data, "newConnection")
         if data == 'COM':
-            self.set_statements(statements)
             self.receiveData(conn, pipe, n - 3)
         elif data == 'RES':
             self.searchResult(conn, n - 3)
         elif data == 'DBE':
-            self.dbExplorer(conn, n - 3, statements)
+            self.dbExplorer(conn, n - 3)
         elif data == 'VAL':
             self.gotFeedback(conn, pipe, n - 3)
         #end if
@@ -416,11 +398,11 @@ class SQLWorkbench(object):
         self.stopThread()
     #end def monitor
 
-    def receiverDbe(self, pipe, statements):
+    def receiverDbe(self, pipe, conn, statements):
         line = ''
         buff = ''
         while statements > 0:
-            line = self.readline(pipe)
+            line = self.readline(pipe, None, conn)
             self.do_log(line, "receiverDbe#stdout.readline")
             buff += line
             if self.debug:
@@ -435,7 +417,7 @@ class SQLWorkbench(object):
         return buff
     #end def receiverDbe
 
-    def readline(self, pipe):
+    def readline(self, pipe, identifier = None, conn = None):
         line = ''
         ch = ''
         while ch != '\n':
@@ -451,13 +433,20 @@ class SQLWorkbench(object):
                     if self.debug:
                         print "WAITING FOR INPUT"
                     #end if
-                    if (self.identifier == None and self.current_conn != None):
-                        self.current_conn.send("FEEDBACK" + line)
+                    if identifier == None and conn == None:
+                        if len(self.processing) == 0:
+                            raise Exception("The server is waiting for an input, but it doesn't know who is waiting for this input (no active connection and no vim servername)")
+                        #end if
+                        identifier = self.processing[0]['identifier']
+                        conn = self.processing[0]['conn']
+                    #end if
+                    if identifier == None and conn != None:
+                        conn.send("FEEDBACK" + line)
                         response = ''
                         r_ch = ''
                         while r_ch != '\n':
                             try:
-                                r_ch = self.current_conn.recv(1)
+                                r_ch = conn.recv(1)
                                 response += r_ch
                             except:
                                 r_ch = ''
@@ -465,10 +454,12 @@ class SQLWorkbench(object):
                             #end try
                         #end while
                         pipe.stdin.write(response)
+                    elif identifier != None:
+                        p = self.getCaller(identifier)
+                        self.toVim('<C-\\><C-N>:call sw#interactive#get(\'%s\')<CR>' % line.replace("'", "''"), p.group(1), '--remote-send')
                     #end if
-                    self.wait_input = 1
-                    self.toVim('<C-\\><C-N>:call sw#interactive#get(\'%s\')<CR>' % line.replace("'", "''"), '--remote-send')
                     line = ''
+                    self.wait_input = 1
                 #end if
             #end if
         #end while
@@ -488,56 +479,45 @@ class SQLWorkbench(object):
         while True:
             with self.new_loop:
                 line = ''
-                self.buff = ''
+                buff = ''
                 self.wait_input = 0
                 self.in_resultset = 0
             #end with
-            with self.executing:
-                while True:
-                    line = self.readline(pipe)
-                    if re.match(self.begin_resultset, line):
-                        self.in_resultset = 1
-                    #end if
-                    if line == '':
-                        self.in_resultset = 0
-                    #end if
-                    if re.match('^\x1b', line) != None:
-                        continue
-                    #end if
-                    if line:
-                        if re.search(self.prompt_pattern_begin, line) != None:
-                            if not first_prompt:
-                                first_prompt = True
-                                self.buff = ''
-                            #end if
-                        #end if
-                        if self.wait_input == 0:
-                            self.buff += line
-                        #end if
-                        if self.debug:
-                            sys.stdout.write(line)
-                            sys.stdout.flush()
-                        #end if
-                    else:
-                        break
-                    #end if
-                    if re.match(self.resultset_end_pattern, line.replace("\n", "")) != None:
-                        self.set_statements(-1)
-                        if self.get_statements() == 0:
-                            break
-                        #end if
-                    #end if
-                #end while
-                if self.identifier != None:
-                    if self.identifier in self.results:
-                        self.results[self.identifier] += "\n" + self.buff
-                    else:
-                        self.results[self.identifier] = self.buff
-                    #end if
-
-                    self.buff = ''
+            while re.match(self.resultset_end_pattern, line.replace("\n", "")) == None:
+                line = self.readline(pipe)
+                if re.match(self.begin_resultset, line):
+                    self.in_resultset = 1
                 #end if
-            #end with
+                if line == '':
+                    self.in_resultset = 0
+                #end if
+                if re.match('^\x1b', line) != None:
+                    continue
+                #end if
+                if line:
+                    if re.search(self.prompt_pattern_begin, line) != None:
+                        if not first_prompt:
+                            first_prompt = True
+                            buff = ''
+                        #end if
+                    #end if
+                    if self.wait_input == 0:
+                        buff += line
+                    #end if
+                    if self.debug:
+                        sys.stdout.write(line)
+                        sys.stdout.flush()
+                    #end if
+                else:
+                    break
+                #end if
+            #end while
+            if len(self.processing) > 0:
+                obj = self.processing.popleft()
+                self.statements[obj['uuid']]['result'] = buff
+                buff = ''
+                del obj
+            #end if
             with self.lock:
                 if self.quit: break
             #end with
