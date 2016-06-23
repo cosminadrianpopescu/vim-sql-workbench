@@ -83,7 +83,7 @@ function! sw#sqlwindow#auto_commands(when)
 
     if sql != ''
         echomsg "Executing automatic commands"
-        call sw#sqlwindow#execute_sql(0, sql)
+        call sw#sqlwindow#execute_macro(sql, 0)
     endif
 endfunction
 
@@ -766,7 +766,11 @@ function! s:process_result(result)
     let result = split(a:result, "\n")
 
     if !exists('b:resultsets')
-        call sw#session#set_buffer_variable('resultsets', [])
+        let initial = []
+        if g:sw_save_resultsets
+            let initial = g:sw_last_resultset
+        endif
+        call sw#session#set_buffer_variable('resultsets', initial)
     endif
 
     let i = 0
@@ -815,8 +819,21 @@ function! s:process_result(result)
         endfor
     endif
 
+    let g:sw_last_resultset = b:resultsets
+
     call sw#session#set_buffer_variable('state', len(b:resultsets[n].lines) > 0 ? 'resultsets' : 'messages')
     echomsg "Command completed"
+endfunction
+
+function! s:do_execute_sql(sql, wait_result)
+    let b:on_async_result = 'sw#sqlwindow#check_results'
+    echomsg "Processing a command. Please wait..."
+    let result = sw#execute_sql(a:sql, a:wait_result)
+
+    if result != ''
+        call s:display_resultsets(result, 1)
+        call s:switch_to_results_tab()
+    endif
 endfunction
 
 function! sw#sqlwindow#execute_sql(wait_result, sql)
@@ -827,7 +844,7 @@ function! sw#sqlwindow#execute_sql(wait_result, sql)
         return 
     endif
     let _sql = a:sql
-    let title = substitute(a:sql, '\v\n', ' ', 'g')
+    let title = substitute(a:sql, '\v[\n\r]', ' ', 'g')
     if strlen(title) > 255
         let title = title[:255] . '...'
     endif
@@ -844,14 +861,11 @@ function! sw#sqlwindow#execute_sql(wait_result, sql)
             let _sql = substitute(_sql, g:parameters_pattern, g:sw_p_prefix . '\1' . g:sw_p_suffix, 'g')
         endif
     endif
-    let b:on_async_result = 'sw#sqlwindow#check_results'
-    echomsg "Processing a command. Please wait..."
-    let result = sw#execute_sql(_sql, a:wait_result)
+    call s:do_execute_sql(_sql, a:wait_result)
+endfunction
 
-    if result != ''
-        call s:display_resultsets(result, 1)
-        call s:switch_to_results_tab()
-    endif
+function! sw#sqlwindow#execute_macro(macro, wait_result)
+    call s:do_execute_sql(a:macro, a:wait_result)
 endfunction
 
 function! sw#sqlwindow#get_object_info()

@@ -987,6 +987,14 @@ resultset will be displayed.
 
 This will unhide all hidden columns from the current result set
 
+## SWSqlWipeoutResultsSets
+
+This will wipeout the list of the resultsets. If you execute multiple sql
+statements, the results are stored in the resultsets buffer. When you close
+it, and then execute another sql statement, you will notice that the latest
+result sets are still there. If you don't want this, you can call this
+command. Next time you execute an sql statement, the resultsets will be empty.
+
 ## SWSqlShowOnlyColumn
 
 *Parameters*: 
@@ -1129,6 +1137,9 @@ and
   the generated files
 * `g:sw_use_old_sw`: if true, then use an older version of `SQL Workbench/J`
   (prior to build 118)
+* `g:sw_save_resultsets`: if true, then all the resultsets will be saved,
+  event if you close the resultsets window; to clear the resultsets window,
+  use `SWSqlWipeoutResultsSets` command.
 
 Screen shots
 ========================================

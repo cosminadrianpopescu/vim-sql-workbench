@@ -25,10 +25,6 @@ if !exists('g:sw_session')
     let g:sw_session = {}
 endif
 
-if !exists('g:Str_sw_autocommands')
-    let g:Str_sw_autocommands = ''
-endif
-
 if !exists('g:sw_autocommands')
     let g:sw_autocommands = {}
 endif
@@ -78,10 +74,16 @@ function! sw#session#set_buffer_variable(var, value)
 endfunction
 
 function! sw#session#autocommand(event, func)
+    if has_key(g:sw_autocommands, s:key_name()) 
+        if has_key(g:sw_autocommands[s:key_name()], a:event)
+            if g:sw_autocommands[s:key_name()][a:event] == a:func
+                return
+            endif
+        endif
+    endif
     let cmd = "autocmd " . a:event . " <buffer> " . "call " . a:func
     execute cmd
     let g:sw_autocommands[s:key_name()][a:event] = a:func
-    let g:Str_sw_autocommands = string(g:sw_autocommands)
 endfunction
 
 function! sw#session#unset_buffer_variable(var)
@@ -104,7 +106,6 @@ function! sw#session#sync()
             endif
         endfor
         let g:Str_sw_session = string(g:sw_session)
-        let g:Str_sw_autocommands = string(g:sw_autocommands)
     endif
 endfunction
 
@@ -114,13 +115,6 @@ function! sw#session#restore()
     if exists('g:Str_sw_session')
         if g:Str_sw_session != ''
             let cmd = "let g:sw_session = " . g:Str_sw_session
-            execute cmd
-        endif
-    endif
-
-    if exists('g:Str_sw_autocommands')
-        if g:Str_sw_autocommands != ''
-            let cmd = "let g:sw_autocommands = " . g:Str_sw_autocommands
             execute cmd
         endif
     endif

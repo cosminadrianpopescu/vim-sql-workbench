@@ -37,7 +37,7 @@ class SQLWorkbench(object):
     wait_input_pattern = '^([a-zA-Z_][a-zA-Z0-9_]*( \\[[^\\]]+\\])?: |([^>]+> )?([^>]+> )*Username|([^>]+> )*Password: |([^>]+>[ ]+)?Do you want to run the command UPDATE\\? \\(Yes/No/All\\)[ ]+)$'
     in_resultset = 0
     wait_input = 0
-    begin_resultset = '^\\-\\-[\\-\\+\\s\\t ]+$'
+    begin_resultset = '^(\\-\\-[\\-\\+\\s\\t ]+|Product Version: [A-Za-z0-9 \\.]+)$'
     buff = ''
     dbe_connections = {}
     statements_lock = thread.allocate_lock()

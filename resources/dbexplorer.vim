@@ -4,7 +4,7 @@ let row_counts = {'title': 'Row Counts', 'shortcut': 'W', 'command': 'WbRowCount
 
 let sw_columns = {'title': 'Columns', 'shortcut': 'C', 'command': 'desc %object%;'}
 let sw_sql_source = {'title': 'SQL Source', 'shortcut': 'S', 'command': 'WbGenerateScript -objects="%object%"', 'filetype': 'sql'}
-let sw_sql_source_triggers = {'title': 'SQL Source', 'shortcut': 'S', 'command': 'WbGrepSource -searchValues="%object%" -objects=%object% -types=* -useRegex=true; -- AFTERcall sw#dbexplorer#fix_source_code()', 'filetype': 'sql', 'skip_columns': [0, 1], 'hide_header': 1}
+let sw_sql_source_triggers = {'title': 'SQL Source', 'shortcut': 'S', 'command': 'wbtriggersource %object%', 'filetype': 'sql', 'hide_header': 1}
 let sw_data = {'title': 'Data', 'shortcut': 'D', 'command': 'select * from %object%;', 'filetype': 'sw'}
 let sw_indexes = {'title': 'Indexes', 'shortcut': 'I', 'command': 'WbListIndexes -tableName=%object%;'}
 let sw_referenced_by = {'title': 'Referenced by', 'shortcut': 'R', 'command': 'WbGrepSource -searchValues="references %object%" -types=TABLE -useRegex=false;', 'skip_columns': [2]}

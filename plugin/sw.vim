@@ -141,6 +141,10 @@ if !exists('g:sw_highlight_resultsets')
     let g:sw_highlight_resultsets = 1
 endif
 
+if !exists('g:sw_save_resultsets')
+    let g:sw_save_resultsets = 0
+endif
+
 "if !exists('g:sw_overwrite_current_command')
 "    let g:sw_overwrite_current_command = 0
 "endif
@@ -173,6 +177,7 @@ command! -nargs=+ -complete=file SWSqlConnectToServer call sw#server#connect_buf
 command! -bang SWSqlExecuteCurrent call sw#sqlwindow#execute_sql(<bang>1, sw#sqlwindow#extract_current_sql())
 command! -bang SWSqlExecuteSelected call sw#sqlwindow#execute_sql(<bang>1, sw#sqlwindow#extract_selected_sql())
 command! -bang SWSqlExecuteAll call sw#sqlwindow#execute_sql(<bang>1, sw#sqlwindow#extract_all_sql())
+command! -bang -nargs=1 SWSqlExecuteMacro call sw#sqlwindow#execute_macro(<f-args>, <bang>1)
 command! SWSqlToggleMessages call sw#sqlwindow#toggle_messages()
 command! SWDbExplorerToggleFormDisplay call sw#dbexplorer#toggle_form_display()
 command! SWSqlToggleFormDisplay call sw#sqlwindow#toggle_display()
@@ -199,6 +204,7 @@ command! -nargs=1 -complete=customlist,sw#sqlwindow#complete_columns SWSqlHideCo
 command! -nargs=1 -complete=customlist,sw#sqlwindow#complete_columns SWSqlFilterColumn call sw#sqlwindow#filter_column(<f-args>)
 command! -nargs=1 -complete=customlist,sw#sqlwindow#complete_columns SWSqlUnfilterColumn call sw#sqlwindow#un_filter_column(<f-args>)
 command! -nargs=0 SWSqlRemoveAllFilters call sw#sqlwindow#remove_all_filters()
+command! -nargs=0 SWSqlWipeoutResultsSets let g:sw_last_resultset = []
 
 command! -nargs=+ -complete=customlist,sw#autocomplete_profile SWServerStart call sw#server#run(<f-args>)
 command! -nargs=1 SWServerStop call sw#server#stop(<f-args>)
