@@ -22,6 +22,7 @@ if !exists('g:SW_Tabs')
 endif
 
 let s:profiles = {}
+let s:last_command = {}
 
 " Local functions{{{1
 " Iterates in the tabs array{{{2
@@ -83,15 +84,14 @@ function! s:get_first_tab(tab)
 endfunction
 
 " Set a special buffer{{{2
-function! s:set_special_buffer(profile, port)
+function! s:set_special_buffer(profile, channel)
     call sw#session#init_section()
     call sw#set_special_buffer()
     call sw#session#set_buffer_variable('profile', a:profile)
-    call sw#session#set_buffer_variable('port', a:port)
+    call sw#session#set_buffer_variable('sw_channel', a:channel)
     call sw#session#set_buffer_variable('t1_shortcuts', 'Main shortcuts:')
     call sw#session#set_buffer_variable('t2_shortcuts', 'Available shortcuts in the left panel:')
     call sw#session#set_buffer_variable('t3_shortcuts', 'Available shortcuts in the right panel:')
-    ""call sw#session#autocommand('BufEnter', 'sw#check_async_result()')
 
 	call s:iterate('s:add_shortcut')
 
@@ -150,6 +150,10 @@ endfunction
 
 function! s:process_result_1(result, shortcut, title)
     let result = a:result
+    if !exists('b:profile') || !sw#is_visible('__Info__-' . b:profile)
+        call sw#display_error("A result was returned by an sql database explorer, but you are not on that tab anymore. You will need to execute the command again")
+        return
+    endif
     call sw#goto_window('__Info__-' . b:profile)
     call sw#session#set_buffer_variable('current_tab', a:shortcut)
     call sw#goto_window('__SQL__-' . b:profile)
@@ -185,8 +189,21 @@ endfunction
 
 " Change a tab{{{2
 function! sw#dbexplorer#change_tab(command, shortcut, title)
-    let result = sw#server#dbexplorer(a:command)
-    call s:process_result_1(result, a:shortcut, a:title)
+    let s:last_command = {'command': a:command, 'shortcut': a:shortcut, 'title': a:title, 'type': 1}
+    call sw#dbexplorer#do_command(a:command)
+endfunction
+
+function! sw#dbexplorer#do_command(sql)
+    if !exists('b:profile') || !exists('b:sw_channel')
+        return
+    endif
+    if a:sql =~ "^:"
+        let func = substitute(a:sql, '^:', '', 'g')
+        execute "let s = " . func . "(getline('.'))"
+        call sw#dbexplorer#message_handler(b:sw_channel, s)
+    else
+        call sw#server#execute_sql(substitute(sw#ensure_sql_not_delimited(a:sql, ';'), '\v\<cr\>', "\n", 'g') . ';', b:sw_channel)
+    endif
 endfunction
 
 function! sw#dbexplorer#toggle_form_display()
@@ -206,6 +223,10 @@ endfunction
 
 function! s:process_result_2(result, tab_shortcut, shortcut, cmd)
     let result = a:result
+    if !exists('b:profile') || !sw#is_visible('__Info__-' . b:profile)
+        call sw#display_error("A result was returned by an sql database explorer, but you are not on that tab anymore. You will need to execute the command again")
+        return
+    endif
     call sw#session#set_buffer_variable('shortcut', a:tab_shortcut)
     call s:iterate('s:find_tab_by_shortcut')
     if (exists('b:tab'))
@@ -253,10 +274,6 @@ endfunction
 
 function! s:change_panel(command, shortcut, title, tab_shortcut)
     echomsg "Processing request..."
-    "if line('.') < 5
-    "    echoerr "You have to select an object in the left panel"
-    "    return 
-    "endif
 
     let pattern = '\v\c^\/\* BEFORE (.*)\*\/.+$'
     if (a:command =~ pattern)
@@ -275,8 +292,8 @@ function! s:change_panel(command, shortcut, title, tab_shortcut)
         let cmd = substitute(cmd, '\v\%' . i . '\%', column, 'g')
         let i = i + 1
     endfor
-    let result = sw#server#dbexplorer(cmd)
-    call s:process_result_2(result, a:tab_shortcut, a:shortcut, cmd)
+    let s:last_command = {'tab_shortcut': a:tab_shortcut, 'shortcut': a:shortcut, 'cmd': cmd, 'type': 2}
+    call sw#dbexplorer#do_command(cmd)
 endfunction
 
 " Adds a shortcut from a tab to the current buffer{{{2
@@ -326,20 +343,6 @@ function! s:set_info_buffer()
     call sw#put_lines_in_buffer(lines)
 endfunction
 
-" Sets the objects initial state{{{2
-""function! s:set_objects_buffer()
-""    wincmd b
-""    wincmd h
-""    let b:object_tabs = []
-""    let b:txt = ''
-""    call s:iterate('s:display_tabs')
-""    setlocal modifiable
-""    normal! ggdG
-""    "put =b:txt
-""    normal! ggdd
-""    setlocal nomodifiable
-""endfunction
-
 " Global functions{{{1
 " Adds a tab{{{2
 function! sw#dbexplorer#add_tab(profile, title, shortcut, command, panels)
@@ -356,13 +359,15 @@ endfunction
 
 " Add a panel to a tab{{{2
 function! sw#dbexplorer#add_panel(profile, tab_shortcut, title, shortcut, command)
-    if (!exists('g:extra_panels'))
+    if (!exists('g:extra_sw_panels'))
         let g:extra_sw_panels = {}
     endif
-    let obj = {'title': a:title, 'shortcut': a:shortcut, 'command': a:command}
+    let obj = {'profile': a:profile, 'panel': {'title': a:title, 'shortcut': a:shortcut, 'command': a:command}}
 
-    if (!has_key(a:profile, g:extra_panels))
-        let g:extra_sw_panels[a:profile] = {}
+    if !has_key(g:extra_sw_panels, a:tab_shortcut)
+        let g:extra_sw_panels[a:tab_shortcut] = [obj]
+    else
+        call add(g:extra_sw_panels[a:tab_shortcut], obj)
     endif
 endfunction
 
@@ -383,6 +388,8 @@ function! sw#dbexplorer#hide_panel(...)
         return 
     endif
 
+    call sw#goto_window('__SQL__' . profile)
+    call sw#server#disconnect_buffer()
     execute "silent! bwipeout __SQL__-" . profile
     execute "silent! bwipeout __Info__-" . profile
     execute "silent! bwipeout __DBExplorer__-" . profile
@@ -391,46 +398,10 @@ endfunction
 " Export the result panel as ods{{{2
 function! sw#dbexplorer#export()
     if (exists('b:last_cmd'))
-        call sw#export_ods(b:profile, b:last_cmd)
+        call sw#export_ods(b:last_cmd)
     else
         call sw#display_error("The panel is empty!")
     endif
-endfunction
-
-function! sw#dbexplorer#show_panel_no_profile(...)
-    let connection = ''
-    let i = 1
-    while i <= a:0
-        let cmd = "let arg = a:" . i
-        execute cmd
-        let connection = connection . ' ' . arg
-        let i = i + 1
-    endwhile
-
-    let profile = '__no__' . sw#generate_unique_id()
-    call sw#dbexplorer#show_panel(profile, connection)
-endfunction
-
-function! sw#dbexplorer#restore_from_session(...)
-    echomsg "Processing request..."
-    let connection = ''
-    if exists('b:connection')
-        let connection = b:connection
-    endif
-    call sw#goto_window('__Info__-' . b:profile)
-    call sw#session#init_section()
-    call sw#session#check()
-    call s:set_special_buffer(b:profile, connection)
-    call s:set_highlights()
-    call sw#goto_window('__SQL__-' . b:profile)
-    call sw#session#init_section()
-    call sw#session#check()
-    call s:set_special_buffer(b:profile, connection)
-    call sw#goto_window('__DBExplorer__-' . b:profile)
-    call sw#session#init_section()
-    call sw#session#check()
-    call s:set_special_buffer(b:profile, connection)
-    call sw#dbexplorer#change_tab(b:first_tab['command'], b:first_tab['shortcut'], b:first_tab['title'])
 endfunction
 
 function! s:set_highlights()
@@ -442,49 +413,47 @@ function! s:set_highlights()
     let id = matchadd('SWHighlights', b:t3_shortcuts)
 endfunction
 
+" Handles a message from the server{{{2
+function! sw#dbexplorer#message_handler(channel, message)
+    let result = split(a:message, "\n")
+    if s:last_command.type == 1
+        call s:process_result_1(result, s:last_command.shortcut, s:last_command.title)
+    elseif s:last_command.type == 2
+        call s:process_result_2(result, s:last_command.tab_shortcut, s:last_command.shortcut, s:last_command.cmd)
+    endif
+endfunction
+
 " Shows the dbexplorer panel{{{2
-function! sw#dbexplorer#show_panel(profile, port, ...)
+function! sw#dbexplorer#show_panel(profile)
     let profile = substitute(a:profile, '\\', '___', 'g')
-    let result = sw#server#open_dbexplorer(profile, a:port)
     let s_below = &splitbelow
     set nosplitbelow
     let name = "__SQL__-" . profile
-    if bufexists(name)
+    if bufexists(name) && bufloaded(name)
         call sw#display_error("There is already a dbexplorer opened for " . profile)
         return 
     endif
 
-    ""if (g:sw_bufexplorer_new_tab)
-    ""    tabnew
-    ""endif
-
     tabnew
 
-    let connection = ''
-    if (a:0)
-        let connection = a:1
-    endif
-
     let uid = sw#generate_unique_id()
-
     execute "badd " . name
     execute "buffer " . name
-    call s:set_special_buffer(profile, a:port)
+    let channel = sw#server#open_dbexplorer(a:profile)
+    call s:set_special_buffer(profile, channel)
     call sw#session#set_buffer_variable('unique_id', uid)
     nnoremap <buffer> <silent> E :call sw#dbexplorer#export()<cr>
     nnoremap <buffer> <silent> B :call <SID>open_in_new_buffer()<cr>
     execute "silent! split __Info__-" . profile
     resize 7
-    "let id = matchadd('SWHighlights', '\v^([^\(]+\([A-Za-z]+\)( \| )?)+$')
-    call s:set_special_buffer(profile, a:port)
+    call s:set_special_buffer(profile, channel)
     call sw#session#set_buffer_variable('unique_id', uid)
     call s:set_highlights()
     wincmd b
     execute "silent! vsplit __DBExplorer__-" . profile
-    call s:set_special_buffer(profile, a:port)
+    call s:set_special_buffer(profile, channel)
     call sw#session#set_buffer_variable('unique_id', uid)
     vertical resize 60
-    ""call s:set_objects_buffer()
     call s:iterate('s:get_first_tab')
     call sw#dbexplorer#change_tab(b:first_tab['command'], b:first_tab['shortcut'], b:first_tab['title'])
     if s_below
@@ -503,15 +472,5 @@ function! sw#dbexplorer#fix_source_code()
     setlocal modifiable
     normal gg0G0x
     setlocal nomodifiable
-endfunction
-
-function! sw#dbexplorer#postgre_proc(line)
-    let proc = substitute(a:line, '\v\c([^\(]+)\(.*$', '\1', 'g')
-    let lines = sw#server#dbexplorer('WbProcSource ' . proc)
-    let result = ''
-    for line in lines
-        let result = result . line . "\n"
-    endfor
-    return result
 endfunction
 " vim:fdm=marker

@@ -90,171 +90,8 @@ function! s:input_select(message, default_value, options)
     return result
 endfunction
 
-function! s:process_search_result(result, columns)
-    let result = split(a:result, "\n")
-    if a:columns != ''
-        let _c = split(a:columns, ',')
-        let columns = []
-        for column in _c
-            if column == 'NAME'
-                call add(columns, 0)
-            endif
-            if column == 'TYPE'
-                call add(columns, 1)
-            endif
-            if column == 'SOURCE'
-                call add(columns, 2)
-            endif
-        endfor
-
-        let i = 0
-        let hide = []
-        while i < 3
-            if index(columns, i) == -1
-                call add(hide, i)
-            endif
-            let i = i + 1
-        endwhile
-
-        if exists('b:resultsets')
-            call sw#session#unset_buffer_variable('resultsets')
-        endif
-        if exists('b:messages')
-            call sw#session#unset_buffer_variable('messages')
-        endif
-
-        if len(hide) > 0
-            let result = sw#hide_columns(result, hide)
-        endif
-	else
-        if g:sw_last_sql_query =~ '\v\cwbgrepsource'
-            let _r = []
-            for line in result
-                if !(line =~ ':')
-                    call add(_r, line)
-                endif
-            endfor
-
-            let result = _r
-        endif 
-    endif
-    let resultsets = []
-    let messages = []
-    let where = 'm'
-    for line in result
-        if line =~ '\v\c^[\=]+$'
-            let where = 'r'
-        elseif line =~ '\v\c^$'
-            let where = 'm'
-        endif
-        if where == 'm'
-            call add(messages, line)
-        else
-            if !(line =~ '\v\c[\=]+$')
-                if line =~ '\v\c^Query returned'
-                    call add(resultsets, '')
-                endif
-                call add(resultsets, line)
-            endif
-        endif
-    endfor
-    let result = resultsets
-    let __name = ''
-    let __name = bufname('%')
-    let uid = b:unique_id
-    let name = s:get_resultset_name()
-    if (!bufexists(name))
-        let port = b:port
-        let s_below = &splitbelow
-        set splitbelow
-        execute "split " . name
-        call sw#session#init_section()
-        call sw#set_special_buffer()
-        call sw#session#set_buffer_variable('port', port)
-        if !s_below
-            set nosplitbelow
-        endif
-        call sw#session#set_buffer_variable('resultsets', resultsets)
-        call sw#session#set_buffer_variable('state', 'resultsets')
-        call sw#session#set_buffer_variable('r_unique_id', uid)
-        call sw#sqlwindow#set_results_shortcuts()
-    endif
-    if (len(messages) > 0)
-        call sw#session#set_buffer_variable('messages', messages)
-    endif
-    let highlight = ''
-    if exists('b:highlight')
-        let highlight = b:highlight
-        call sw#session#unset_buffer_variable('highlight')
-        if exists('b:highlight_case')
-            let highlight = b:highlight_case . highlight
-            call sw#session#unset_buffer_variable('highlight_case')
-        endif
-
-        let highlight = '\V' . highlight
-    endif
-    if bufwinnr('__SQL__-' . uid) != -1
-        call sw#goto_window('__SQL__-' . uid)
-    else
-        call sw#goto_window(s:get_resultset_name())
-        let __name = sw#find_buffer_by_unique_id(b:r_unique_id)
-    endif
-    if exists('b:match_id')
-        try
-            call matchdelete(b:match_id)
-        catch
-        endtry
-        call sw#session#unset_buffer_variable('match_id')
-    endif
-    setlocal modifiable
-    normal ggdG
-
-    for line in result
-        put =line
-    endfor
-
-    normal ggdd
-    if highlight != ''
-        call sw#session#set_buffer_variable('match_id', matchadd('Search', highlight))
-    endif
-    setlocal nomodifiable
-    if __name != ''
-        call sw#goto_window(__name)
-    endif
-endfunction
-
 function! s:set_async_variables(columns)
-    call sw#set_on_async_result('sw#search#on_async_result')
     let b:__columns = a:columns
-endfunction
-
-function! s:asynchronious(columns, set)
-    let name = sw#session#buffer_name()
-    if name == s:get_resultset_name()
-        let a_name = sw#find_buffer_by_unique_id(b:r_unique_id)
-    else
-        let a_name = s:get_resultset_name()
-    endif
-    if a:set
-        if sw#dbexplorer#is_db_explorer_tab()
-            call sw#dbexplorer#set_values_to_all_buffers(['on_async_result', '__columns'], ['sw#search#on_async_result', a:columns])
-        else
-            call s:set_async_variables(a:columns)
-        endif
-    else
-        if sw#dbexplorer#is_db_explorer_tab()
-            call sw#dbexplorer#unset_values_from_all_buffers(['on_async_result', '__columns'])
-        else
-            call s:unset_async_variables()
-        endif
-    endif
-    call sw#goto_window(a_name)
-    if a:set
-        call s:set_async_variables(a:columns)
-    else
-        call s:unset_async_variables()
-    endif
-    call sw#goto_window(name)
 endfunction
 
 function! s:unset_async_variables()
@@ -270,28 +107,13 @@ function! s:unset_async_variables()
     endif
 endfunction
 
-function! sw#search#on_async_result()
-    let result = sw#get_sql_result(0)
-    let columns = g:sw_search_default_result_columns
-    if exists('b:__columns')
-        let columns = b:__columns
-    endif
-    call s:process_search_result(result, columns)
-    call s:asynchronious('', 0)
-endfunction
-
-function! sw#search#do(command, columns, wait_result)
+function! sw#search#do(command)
     echomsg "Searching. Please wait..."
 	call sw#session#init_section()
-    call s:asynchronious(a:columns, 1)
-    let result = sw#execute_sql(a:command, a:wait_result)
-    if result != ''
-        call s:process_search_result(result, a:columns)
-        call s:asynchronious('', 0)
-    endif
+    call sw#execute_sql(a:command . ';')
 endfunction
 
-function! sw#search#data_defaults(wait_result, value)
+function! sw#search#data_defaults(value)
     let command = 'WbGrepData -searchValue="' . escape(a:value, '"') . '" -ignoreCase=' . g:sw_search_default_ignore_case . ' -compareType=' . g:sw_search_default_compare_types . ' -tables=' . g:sw_search_default_tables . ' -types="' . g:sw_search_default_data_types . '" -excludeTables=' . g:sw_search_default_exclude_tables . ' -excludeLobs=' . g:sw_search_default_exclude_lobs
 
     call sw#session#set_buffer_variable('highlight', a:value)
@@ -301,13 +123,13 @@ function! sw#search#data_defaults(wait_result, value)
         call sw#session#set_buffer_variable('highlight_case', '\c')
     endif
 
-    call sw#search#do(command, '', a:wait_result)
+    call sw#search#do(command)
 endfunction
 
-function! sw#search#object_defaults(wait_result, values)
+function! sw#search#object_defaults(values)
     let command = 'WbGrepSource -searchValues="' . escape(a:values, '"') . '" -useRegex=' . g:sw_search_default_regex . ' -matchAll=' . g:sw_search_default_match_all . ' -ignoreCase=' . g:sw_search_default_ignore_case . ' -types="' . g:sw_search_default_types . '" -objects=' . g:sw_search_default_objects
 
-    call sw#search#do(command, g:sw_search_default_result_columns, a:wait_result)
+    call sw#search#do(command)
 endfunction
 
 function! s:get_search_parameters(v)
@@ -360,7 +182,7 @@ function! s:get_search_parameters(v)
     return result
 endfunction
 
-function! sw#search#prepare(wait_result, cmd, ...)
+function! sw#search#prepare(cmd, ...)
     if !a:0
         if a:cmd == 'WbGrepSource'
             let command = a:cmd . s:get_search_parameters(s:obj_parameters)
@@ -370,32 +192,22 @@ function! sw#search#prepare(wait_result, cmd, ...)
         if command == a:cmd
             return
         endif
-        if a:cmd == 'WbGrepSource'
-            let columns = input('Available columns are: NAME,TYPE,SOURCE. Select columns to display: ', g:sw_search_default_result_columns)
-        else
-            let columns = ''
-        endif
     else
         let i = 1
         let command = a:cmd
-        if a:cmd == 'WbGrepSource'
-            let columns = g:sw_search_default_result_columns
-        else
-            let columns = ''
-        endif
         while i <= a:0
             let cmd = "let arg = a:" . i
             execute cmd
-            let command = command . ' -searchValues=' . arg
+            let command = command . ' ' . (a:cmd == 'WbGrepSource' ? '-searchValues' : '-searchValue') . '=' . arg . ' -types="TABLE"'
             let i = i + 1
         endwhile
     endif
 
-    call sw#search#do(command, columns, a:wait_result)
+    call sw#search#do(command)
 endfunction
 
-function! sw#search#object(wait_result, ...)
-    let command = 'call sw#search#prepare(' . a:wait_result . ', "WbGrepSource"'
+function! sw#search#object(...)
+    let command = 'call sw#search#prepare("WbGrepSource"'
     let i = 1
     while i <= a:0
         let cmd = "let arg = a:" . i
@@ -409,8 +221,8 @@ function! sw#search#object(wait_result, ...)
     execute command
 endfunction
 
-function! sw#search#data(wait_result, ...)
-    let command = 'call sw#search#prepare(' . a:wait_result . ', "WbGrepData"'
+function! sw#search#data(...)
+    let command = 'call sw#search#prepare("WbGrepData"'
     let i = 1
     while i <= a:0
         let cmd = "let arg = a:" . i

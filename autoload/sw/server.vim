@@ -18,202 +18,193 @@
 "============================================================================"
 
 let s:current_file = expand('<sfile>:p:h')
-let s:active_servers = []
+let s:channel_handlers = {}
+let s:pattern_prompt_begin = '\v^([a-zA-Z_0-9\.]+(\@[a-zA-Z_0-9\/\-]+)*\>[ \s\t]*)+'
+let s:pattern_prompt = s:pattern_prompt_begin . '$'
+let s:pattern_wait_input = '\v^([a-zA-Z_][a-zA-Z0-9_]*( \[[^\]]+\])?: |([^\>]+\> )?([^\>]+\> )*Username|([^\>]+\> )*Password: |([^\>]+\>[ ]+)?Do you want to run the command UPDATE\? \(Yes\/No\/All\)[ ]+)$'
+let s:pattern_new_connection = '\v^Connection to "([^"]+)" successful$'
+let s:timer = {'id': '', 'sec' : 0}
 
-function! s:get_pipe_name(id)
-    return g:sw_tmp . '/sw-pipe-' . a:id
+function! s:log_init(channel)
+    if g:sw_log_to_file
+        let s:channel_handlers[a:channel].log = g:sw_tmp . '/' . v:servername . '-' . substitute(fnamemodify(bufname('%'), ':t'), '\.', '-', 'g')
+    else
+        let s:channel_handlers[a:channel].log = ''
+    endif
 endfunction
 
-function! sw#server#run(port, ...)
-    if !exists('g:loaded_dispatch')
-        throw 'You cannot start a server without vim dispatch plugin. Please install it first. If you don''t want or you don''t have the possibility to install it, you can always start the server manually. '
+function! s:log_channel(channel, txt)
+    if g:sw_log_to_file
+        let file = s:channel_handlers[a:channel].log
+        let mode = filereadable(file) ? 'ab' : 'wb'
+        call writefile(split(a:txt, "\n"), file, mode)
+    else
+        let s:channel_handlers[a:channel].log .= a:txt
     endif
-    let cmd = 'Start! ' . s:current_file . '/../../resources/sqlwbconsole' . ' -t ' . g:sw_tmp . ' -s ' . v:servername . ' -c ' . g:sw_exe . ' -v ' . g:sw_vim_exe . ' -o ' . a:port
-
-    if a:0
-        let cmd = cmd + ' -p ' . a:1
-    endif
-
-    execute cmd
-    redraw!
 endfunction
 
-function! sw#server#connect_buffer(port, ...)
+function! sw#server#channel_log(channel)
+    return s:channel_handlers[a:channel].log
+endfunction
+
+function! sw#server#handle_message(channel, msg)
+    call s:log_channel(a:channel, a:msg)
+    let lines = split(substitute(a:msg, "\r", "", 'g'), "\n")
+    let got_prompt = 0
+    let max_length = 0
+    let text = ''
+    for line in lines
+        let line = substitute(line, '\v^(\.\.\> )*', '', 'g')
+        let text .= (text == '' ? '' : "\n") . substitute(line, s:pattern_prompt_begin, '', 'g')
+        if line =~ s:pattern_prompt
+            let got_prompt = 1
+        endif
+        if line =~ s:pattern_wait_input && !(line =~ '\v^Catalog: $') && !(line =~ '\v^Schema: $')
+            let value = input('SQL Workbench/J is asking for input for ' . line . ' ', 'abc')
+            call ch_sendraw(b:sw_channel, value . "\n")
+        endif
+
+        if line =~ s:pattern_new_connection 
+            let s:channel_handlers[a:channel].current_url = substitute(line, s:pattern_new_connection, '\1', 'g')
+        endif
+    endfor
+    let s:channel_handlers[a:channel].text .= text . "\n"
+    if got_prompt
+        let type = s:channel_handlers[a:channel].type
+        if (type == 'sqlwindow')
+            if s:channel_handlers[a:channel].tmp_handler != ''
+                let Func = function(s:channel_handlers[a:channel].tmp_handler)
+                call Func(s:channel_handlers[a:channel].text)
+                let s:channel_handlers[a:channel].tmp_handler = ''
+            else
+                call sw#sqlwindow#message_handler(a:channel, s:channel_handlers[a:channel].text)
+            endif
+        elseif (type == 'dbexplorer')
+            call sw#dbexplorer#message_handler(a:channel, s:channel_handlers[a:channel].text)
+        endif
+
+        let s:channel_handlers[a:channel].text = ''
+        call s:init_timer()
+    endif
+endfunction
+
+function! s:start_sqlwb(type)
+    let job = job_start(g:sw_exe . ' -feedback=true -showProgress=false -abortOnError=false -showTiming=true', {'in_mode': 'raw', 'out_mode': 'raw'})
+    let channel = job_getchannel(job)
+    call ch_setoptions(channel, {'callback': 'sw#server#handle_message'})
+    let s:channel_handlers[channel] = {'text': '', 'type': a:type, 'buffer': fnamemodify(bufname('%'), ':p'), 'current_url': '', 'tmp_handler': ''}
+    call s:log_init(channel)
+
+    return channel
+endfunction
+
+function! sw#server#connect_buffer(...)
     let file = bufname('%')
     let command = 'e'
     if (a:0 >= 2)
-        let file = a:1
-        let command = a:2
+        let file = a:2
+        let command = a:1
     elseif a:0 >= 1
         let command = a:1
     endif
-    call sw#sqlwindow#open_buffer(a:port, file, command)
+
+    execute command . " " . file
+    call sw#session#init_section()
+
+    if (!exists('b:sw_channel'))
+        let b:sw_channel = s:start_sqlwb('sqlwindow')
+    endif
+
+    call sw#sqlwindow#open_buffer(file, command)
 endfunction
 
-function! sw#server#new(port)
-    call add(s:active_servers, a:port)
-    echomsg "Added new server on port: " . a:port
-    call sw#interrupt()
-    redraw!
-    return ''
-endfunction
-
-function! sw#server#remove(port)
-    let i = 0
-    for port in s:active_servers
-        if port == a:port
-            unlet s:active_servers[i]
-        endif
-        let i = i + 1
-    endfor
-    echomsg "Removed server from port: " . a:port
-    call sw#interrupt()
-    redraw!
-    return ''
-endfunction
-
-function! s:pipe_execute(type, cmd, wait_result, ...)
-    if v:servername == ''
-        call sw#display_error("This instance of vim is not started in server mode. SQL Workbench cannot be used.")
+function! sw#server#execute_sql(sql, ...)
+    let channel = ''
+    if (exists('b:sw_channel'))
+        let channel = b:sw_channel
+    endif
+    let callback = ''
+    if a:0 >= 2
+        let channel = a:1
+        let callback = a:2
+    elseif a:0 >= 1
+        let channel = a:1
+    endif
+    if ch_status(channel) != 'open'
+        call sw#display_error("The channel is not open. This means that SQL Workbench/J instance for this answer does not responsd anymore. Please do again SWSqlBufferConnect")
+        unlet b:sw_channel
         return ''
     endif
-    let port = 0
+    let text = a:sql . "\n"
+    call s:log_channel(channel, text)
+    if callback != ''
+        let s:channel_handlers[channel].tmp_handler = callback
+    endif
+    call ch_sendraw(channel, text)
+    if g:sw_command_timer
+        call s:init_timer()
+        let s:timer.id = timer_start(1000, 'sw#server#timer', {'repeat': -1})
+    endif
+endfunction
+
+function! s:init_timer()
+    if s:timer.id != ''
+        call timer_stop(s:timer.id)
+    endif
+    let s:timer = {'id': '', 'sec': 0}
+endfunction
+
+function! sw#server#timer(timer)
+    let s:timer.sec += 1
+    echo "Query time: " . s:timer.sec . " seconds"
+endfunction
+
+function! sw#server#disconnect_buffer(...)
+    let channel = ''
+    if (exists('b:sw_channel'))
+        let channel = b:sw_channel
+        unlet b:sw_channel
+    endif
     if a:0
-        let port = a:1
-    else
-        if exists('b:port')
-            let port = b:port
-        endif
+        let channel = a:1
     endif
-    if port == 0
-        throw "There is no port set for this buffer. "
-    endif
-    let uid = -1
-    if exists('b:unique_id')
-        let uid = b:unique_id
-    endif
+    call sw#server#execute_sql('exit', channel)
+    unlet s:channel_handlers[channel]
+    call s:init_timer()
 
-    let sql = a:cmd
-    if a:type == 'COM' || a:type == 'DBE'
-        let delimiter = ';'
-        if exists('b:delimiter')
-            let delimiter = b:delimiter
-        endif
-        let statements = sw#sql_split(a:cmd, delimiter)
-        let sql = ''
-        for statement in statements
-            let sql .= (sql == '' ? '' : delimiter . "\n==========\n") . statement
-        endfor
-        if !(a:cmd =~ '\v^[^\n]+\n$')
-            let sql .= delimiter
-        endif
+    if exists('g:sw_airline_support') && g:sw_airline_support == 1
+        call airline#update_statusline()
     endif
-
-    try
-    python << SCRIPT
-import vim
-import socket
-import re
-identifier = vim.eval('v:servername') + "#" + vim.eval('uid')
-cmd = vim.eval('sql')
-port = int(vim.eval('port'))
-type = vim.eval('a:type')
-s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-s.connect(('127.0.0.1', port))
-packet = ''
-packet += type
-if vim.eval('a:wait_result') == '0' and vim.eval('a:type') != 'VAL':
-    packet += '?' + identifier + '?'
-#end if
-packet += cmd
-packet = str(len(packet)) + "#" + packet
-s.sendall(packet)
-result = ''
-if vim.eval('a:wait_result') == '1':
-    while 1:
-        data = s.recv(4096)
-        if (re.search('^DISCONNECT', data)):
-            break
-        #end if
-        pattern = "^FEEDBACK(.*)$"
-        if (re.match(pattern, data) != None):
-            line = re.sub("^FEEDBACK(.*)$", "\\1", data)
-            vim.command("let value = input('SQL Workbench/J is asking for input for %s') . \"\\n\"" % line.replace("'", "''"))
-            s.sendall(vim.eval('value'))
-            data = '>'
-        #end if
-        if not data:
-            break
-        #end if
-        result += data
-    #end while
-#end if
-s.close()
-vim.command("let result = ''")
-lines = result.split("\n")
-for line in lines:
-    vim.command("let result = result . '%s\n'" % line.replace("'", "''"))
-#end for
-SCRIPT
-    catch
-        call sw#display_error("There is a problem communicating with the server on port " . port . ". Maybe the server is down?")
-        return ''
-    endtry
-    if len(result) <= 3
-        let result = ''
-    endif
-    return substitute(result, '\r', '', 'g')
 endfunction
 
-function! sw#server#stop(port)
-    call s:pipe_execute('COM', "exit", 0, a:port)
-endfunction
-
-function! sw#server#fetch_result()
-    let result = s:pipe_execute('RES', v:servername . "#" . b:unique_id, 1, b:port)
-    return result
-endfunction
-
-function! sw#server#open_dbexplorer(profile, port)
-    return s:pipe_execute('DBE', substitute(a:profile, '___', "\\\\", 'g') . "\n", 1, a:port)
-endfunction
-
-function! sw#server#dbexplorer(sql)
-    if !exists('b:profile')
-        return
-    endif
-    call sw#server#open_dbexplorer(b:profile, b:port)
-    if a:sql =~ "^:"
-        let func = substitute(a:sql, '^:', '', 'g')
-        execute "let s = " . func . "(getline('.'))"
-    else
-        let s = s:pipe_execute('DBE', substitute(b:profile, '___', "\\\\", 'g') . "\n" . a:sql . ';' . "\n", 1)
-    endif
-    let lines = split(s, "\n")
-    let result = []
-    let rec = 0
-    for line in lines
-        if rec && !(line =~ '\v^[\=]+$')
-            call add(result, line)
-        endif
-        if line =~ '\v\c^[\=]+$'
-            let rec = 1
+function! sw#server#get_buffer_url(buffer)
+    for key in keys(s:channel_handlers)
+        if s:channel_handlers[key]['buffer'] == a:buffer
+            return s:channel_handlers[key]['current_url']
         endif
     endfor
-    if len(result) == 0
-        let result = split(s, "\n")
-    endif
-    return result
+
+    return ''
 endfunction
 
-function! sw#server#execute_sql(sql, wait_result, port)
-    let sql = a:sql
-    if !(substitute(sql, "^\\v\\c\\n", ' ', 'g') =~ b:delimiter . '[ \s\t\r\n]*$')
-        let sql = sql . b:delimiter . "\n"
-    endif
-    return s:pipe_execute('COM', sql, a:wait_result, a:port)
+function! sw#server#get_active_connections()
+    let result = ''
+    for key in keys(s:channel_handlers)
+        let url = s:channel_handlers[key]['current_url']
+        let result .= (result == '' ? '' : "\n") . s:channel_handlers[key]['buffer'] . ' - ' . (url == '' ? 'NOT CONNECTED' : url)
+    endfor
+
+    return result == '' ? 'No active sql workbench buffers' : result
 endfunction
 
-function! sw#server#send_feedback(val)
-    return s:pipe_execute('VAL', a:val, 0)
+function! sw#server#tmp()
+    return s:channel_handlers
+endfunction
+
+function! sw#server#open_dbexplorer(profile)
+    let channel = s:start_sqlwb('dbexplorer')
+    let command = sw#get_connect_command(a:profile)
+    call sw#server#execute_sql(command, channel)
+
+    return channel
 endfunction

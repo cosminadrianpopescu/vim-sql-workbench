@@ -76,6 +76,8 @@ endfunction
 
 let s:error = 0
 
+let s:patterns = {'pattern_no_results': '\c\v^\(([0-9]+) rows?\)', 'pattern_empty_line': '\v^[\r \s\t]*$', 'pattern_exec_time': '\v^Execution time: [0-9\.]+', 'pattern_resultset_start': '\v^([\-]+\+?)+([\-]*)-$'}
+
 if !exists('g:Sw_unique_id')
     let g:Sw_unique_id = 1
 endif
@@ -193,14 +195,8 @@ function! sw#get_sw_profile()
 endfunction
 
 " Executes an sql command{{{1
-function! sw#execute_sql(command, wait_result)
-    let port = sw#get_server_port()
-    
-    if port == ''
-        return
-    endif
-
-    if (port == -1)
+function! sw#execute_sql(command)
+    if (!exists('b:sw_channel'))
         call sw#display_error("This buffer is not an sql workbench buffer.")
         return
     endif
@@ -226,7 +222,7 @@ function! sw#execute_sql(command, wait_result)
             endfor
         endif
     endif
-    return sw#server#execute_sql(a:command, a:wait_result, port)
+    return sw#server#execute_sql(a:command)
 endfunction
 
 " Exports as ods{{{1
@@ -236,7 +232,12 @@ function! sw#export_ods(command)
         let location = input('Please select a destination file: ', '', 'file')
         if (location != '')
             let queries = sw#sql_split(a:command)
-            return sw#sqlwindow#execute_sql(0, "WbExport -type=" . format . ' -file=' . location . ';' . queries[0])
+            if len(queries) >= 2
+                let query = queries[1]
+            else
+                let query = queries[0]
+            endif
+            return sw#sqlwindow#execute_sql("WbExport -type=" . format . ' -file=' . location . ';' . query . ';')
         endif
     endif
 endfunction
@@ -388,16 +389,25 @@ function! sw#hide_header(rows)
     return result
 endfunction
 
+" Returns the window id of a buffer identified by name is visible if is
+" visible in the current tab, otherwise return 0
+function! sw#is_visible(name)
+    let bufnr = bufnr(a:name)
+    let windows = win_findbuf(bufnr)
+    for w in windows
+        if win_id2win(w) != 0
+            return w
+        endif
+    endfor
+
+    return 0
+endfunction
+
 " Goes to a window identified by a buffer name{{{1
 function! sw#goto_window(name)
-    let crt = bufname('%')
-    if bufwinnr(a:name) != -1
-        while bufname('%') != a:name && sw#session#buffer_name() != a:name
-            wincmd w
-            if bufname('%') == crt
-                return
-            endif
-        endwhile
+    let id = sw#is_visible(a:name)
+    if id != 0
+        call win_gotoid(id)
     endif
 endfunction
 
@@ -414,6 +424,39 @@ function! sw#set_special_buffer()
 	setlocal nowrap
 	setlocal nobuflisted
     setlocal nomodifiable
+endfunction
+
+" Parses the macros xml file to give autocompletion for macros{{{1
+function! sw#parse_macro_xml()
+    if !exists('g:sw_config_dir')
+        return {}
+    endif
+
+    let lines = readfile(g:sw_config_dir . 'WbMacros.xml')
+    let s = ''
+    for line in lines
+        let s = s . ' ' . line
+    endfor
+
+    let pattern = '\v\c(\<object class\="[^"]{-}"\>.{-}\<\/object\>)'
+    let result = {}
+    let n = 0
+    let list = matchlist(s, pattern, n, 1)
+    while len(list) > 0
+        let _pattern = '\v\c^.*\<void property\="#prop#"\>[ \s\r\t]*\<string\>([^\<]+)\<.*$'
+        let name = substitute(list[1], substitute(_pattern, '#prop#', 'name', 'g'), '\1', 'g')
+        let driverName = substitute(list[1], substitute(_pattern, '#prop#', 'driverName', 'g'), '\1', 'g')
+        let group = substitute(list[1], substitute(_pattern, '#prop#', 'group', 'g'), '\1', 'g')
+        if (group != list[1])
+            let name = group . '\' . name
+        endif
+        let result[name] = driverName
+        let n = n + 1
+        let s = substitute(s, '\V' . list[0], '', 'g')
+        let list = matchlist(s, pattern, n, 1)
+    endwhile
+
+    return result
 endfunction
 
 " Parses the profile xml file to give autocompletion for profiles{{{1
@@ -527,4 +570,21 @@ function! sw#put_lines_in_buffer(lines)
     execute "read " . g:sw_tmp . "/row-" . v:servername
     normal ggdd
     setlocal nomodifiable
+endfunction
+
+function! sw#get_connect_command(profile)
+    let pattern = '\v(^[^\\]+\\)?(.*)$'
+    let profile = substitute(a:profile, pattern, '\2', 'g')
+    let group = substitute(a:profile, pattern, '\1', 'g')
+    let group = group[0:strlen(group) - 2]
+    return 'wbconnect -profile=' . profile . (group == '' ? '' : ' -profileGroup=' . group) . ';'
+endfunction
+
+" Makes sure that an sql is not delimiter by the delimiter
+function! sw#ensure_sql_not_delimited(sql, delimiter)
+    return substitute(substitute(substitute(a:sql, '\v\n', '#NEWLINE#', 'g'), '\v' . a:delimiter . '[\s\t\r]*$', '', 'g'), '\v#NEWLINE#', "\n", 'g')
+endfunction
+
+function! sw#get_pattern(which)
+    return s:patterns[a:which]
 endfunction

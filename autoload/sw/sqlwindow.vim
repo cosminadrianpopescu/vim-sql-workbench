@@ -17,15 +17,13 @@
 "
 "============================================================================"
 
-let s:pattern_resultset_start = '\v^([\-]+\+?)+([\-]*)-$'
 let s:pattern_resultset_title = '\v^[\=]SQL ([0-9]+)'
-let s:pattern_no_results = '\v^Query returned ([0-9]+) rows?$'
-let s:pattern_empty_line = '\v^[\r \s\t]*$'
 let s:pattern_ignore_line = '\v\c^#IGNORE#$'
 let s:script_path = expand('<sfile>:p:h') . '/../../'
+let g:sw_last_resultset = []
 
 function! s:check_sql_buffer()
-    if (!exists('b:port'))
+    if (!exists('b:sw_channel'))
         call sw#display_error("The current buffer is not an SQL Workbench buffer. Open it using the SWOpenSQL command.")
         return 0
     endif
@@ -43,7 +41,6 @@ endfunction
 
 function! sw#sqlwindow#set_statement_shortcuts()
     call s:set_shortcuts(g:sw_shortcuts_sql_buffer_statement, "resources/shortcuts_sql_buffer_statement.vim")
-    call sw#sqlwindow#check_hidden_results()
 endfunction
 
 function! sw#sqlwindow#set_results_shortcuts()
@@ -56,10 +53,16 @@ function! s:switch_to_results_tab()
     endif
 endfunction
 
-function! sw#sqlwindow#check_results()
-    let results = sw#server#fetch_result()
-    if results != ''
-        call s:display_resultsets(results, 1)
+function! sw#sqlwindow#message_handler(channel, results)
+    if a:results != ''
+        if (!s:open_resultset_window())
+            call sw#display_error('Result set cannot be selected. Probably is hidden')
+            return
+        endif
+
+        let b:current_channel = a:channel
+        call s:process_result(a:channel, a:results)
+        call s:display_resultsets(1)
         call s:switch_to_results_tab()
     endif
 endfunction
@@ -83,37 +86,28 @@ function! sw#sqlwindow#auto_commands(when)
 
     if sql != ''
         echomsg "Executing automatic commands"
-        call sw#sqlwindow#execute_macro(sql, 0)
+        call sw#sqlwindow#execute_macro(sql)
     endif
 endfunction
 
-function! s:do_open_buffer(port)
+function! sw#sqlwindow#auto_disconnect_buffer()
+    let name = bufname(expand('<afile>'))
+    let channel = getbufvar(name, 'sw_channel')
+    call sw#server#disconnect_buffer(channel)
+endfunction
+
+function! s:do_open_buffer()
+    call sw#session#autocommand('BufDelete', 'sw#sqlwindow#auto_disconnect_buffer()')
+    call sw#session#autocommand('BufEnter', 'sw#sqlwindow#check_results()')
     call sw#session#set_buffer_variable('delimiter', g:sw_delimiter)
     call sw#session#set_buffer_variable('unique_id', sw#generate_unique_id())
-    call sw#session#set_buffer_variable('port', a:port)
-    ""call sw#session#autocommand('BufEnter', 'sw#sqlwindow#set_statement_shortcuts()')
-    call sw#session#autocommand('BufEnter', 'sw#sqlwindow#check_results()')
-    ""call sw#session#autocommand('BufUnload', 'sw#sqlwindow#auto_commands("after")')
     call sw#sqlwindow#set_statement_shortcuts()
     call sw#sqlwindow#auto_commands('before')
 endfunction
 
-function! sw#sqlwindow#open_buffer(port, file, command)
-    execute a:command . " " . a:file
+function! sw#sqlwindow#open_buffer(file, command)
     call sw#session#init_section()
-    call sw#session#set_buffer_variable('port', a:port)
-    call s:do_open_buffer(a:port)
-endfunction
-
-function! sw#sqlwindow#set_delimiter(new_del)
-    if (!s:check_sql_buffer())
-        return 
-    endif
-    if exists('b:port')
-        sw#display_error('You cannot change the delimier in server mode. This happens because SQL Workbench does now know another delimiter during console mode. You can only change the delimiter in batch mode (see the documentation). So, if you want to change the delimiter, please open the buffer in batch mode.')
-        return 
-    endif
-    call sw#session#set_buffer_variable('delimiter', a:new_del)
+    call s:do_open_buffer()
 endfunction
 
 function! sw#sqlwindow#export_last()
@@ -148,7 +142,7 @@ function! sw#sqlwindow#extract_current_sql(...)
             if (!a:0 || (a:0 && !a:1))
                 let sql = substitute(sql, '#CURSOR#', '', 'g')
             endif
-            return sql
+            return sql . b:delimiter
         endif
     endfor
     call sw#display_error("Could not identify the current query")
@@ -160,6 +154,9 @@ function! sw#sqlwindow#extract_selected_sql()
     normal gv"zy
     let sql = @z
     let @z = z_save
+    if !(substitute(sql, '\v[\r\n]', '', 'g') =~ '\v' . b:delimiter . '[\n\r]*$')
+        let sql .= ';'
+    endif
     return sql
 endfunction
 
@@ -188,7 +185,7 @@ function! sw#sqlwindow#toggle_messages()
         call sw#session#set_buffer_variable('position', getpos('.'))
     endif
     call sw#session#set_buffer_variable('state', b:state == 'resultsets' ? 'messages' : 'resultsets')
-    call s:display_resultsets('', 1)
+    call s:display_resultsets(1)
 endfunction
 
 function! sw#sqlwindow#toggle_display()
@@ -205,12 +202,12 @@ function! sw#sqlwindow#toggle_display()
     endif
     let line = line('.')
     
-    ""if (line <= 3 || getline('.') =~ s:pattern_empty_line || getline('.') == '')
+    ""if (line <= 3 || getline('.') =~ sw#get_pattern('pattern_empty_line') || getline('.') == '')
     ""    call sw#display_error("You have to be on a row in a resultset")
     ""    return
     ""endif
     if b:state == 'form' || b:state == 'resultsets'
-        call s:display_resultsets('', 1)
+        call s:display_resultsets(1)
     endif
 endfunction
 
@@ -259,7 +256,7 @@ function! sw#sqlwindow#show_column(idx, show_results)
 
     
     if a:show_results
-        call s:display_resultsets('', 1)
+        call s:display_resultsets(1)
     endif
 endfunction
 
@@ -286,7 +283,7 @@ function! sw#sqlwindow#hide_column(idx, show_results)
     call sort(b:resultsets[n].hidden_columns)
 
     if a:show_results
-        call s:display_resultsets('', 1)
+        call s:display_resultsets(1)
     endif
 endfunction
 
@@ -299,7 +296,7 @@ function! sw#sqlwindow#unfilter_column(column)
     let column = s:get_column(a:column, n)
     unlet b:resultsets[n].filters[column]
 
-    call s:display_resultsets('', 1)
+    call s:display_resultsets(1)
 endfunction
 
 function! sw#sqlwindow#filter_column(column)
@@ -313,7 +310,7 @@ function! sw#sqlwindow#filter_column(column)
         let column = s:get_column(a:column, n)
         let b:resultsets[n].filters[column] = filter
 
-        call s:display_resultsets('', 1)
+        call s:display_resultsets(1)
     endif
 endfunction
 
@@ -324,7 +321,7 @@ function! sw#sqlwindow#remove_all_filters()
     endif
 
     let b:resultsets[n].filters = {}
-    call s:display_resultsets('', 1)
+    call s:display_resultsets(1)
 endfunction
 
 function! sw#sqlwindow#show_all_columns()
@@ -333,7 +330,7 @@ function! sw#sqlwindow#show_all_columns()
         return
     endif
     let b:resultsets[n].hidden_columns = []
-    call s:display_resultsets('', 1)
+    call s:display_resultsets(1)
 endfunction
 
 function! sw#sqlwindow#show_only_column(column)
@@ -351,7 +348,7 @@ function! sw#sqlwindow#show_only_column(column)
         endif
     endfor
 
-    call s:display_resultsets('', 1)
+    call s:display_resultsets(1)
 endfunction
 
 function! sw#sqlwindow#complete_columns(ArgLead, CmdLine, CursorPos)
@@ -383,7 +380,7 @@ function! sw#sqlwindow#show_only_columns(columns)
         endif
     endfor
 
-    call s:display_resultsets('', 1)
+    call s:display_resultsets(1)
 endfunction
 
 function! sw#sqlwindow#display_as_form()
@@ -436,7 +433,7 @@ function! sw#sqlwindow#display_as_form()
             let cmd = "let txt = getline(i)[" . n . ":" . m . "]"
             execute cmd
             
-            if !(txt =~ s:pattern_empty_line)
+            if !(txt =~ sw#get_pattern('pattern_empty_line'))
                 call add(lines, line)
                 let line = ''
                 let j = 0
@@ -458,7 +455,7 @@ function! sw#sqlwindow#display_as_form()
 endfunction
 
 function! s:get_resultset_start(...)
-    let pattern = s:pattern_resultset_start
+    let pattern = sw#get_pattern('pattern_resultset_start')
     if a:0
         let pattern = a:1
     endif
@@ -491,7 +488,7 @@ function! s:get_row_limits()
     while (row_start > resultset_start)
         let n = 0
         let line = getline(row_start)
-        if line =~ s:pattern_no_results
+        if line =~ sw#get_pattern('pattern_no_results')
             call sw#display_error("You are not on a resultset row.")
             return []
         endif
@@ -506,7 +503,7 @@ function! s:get_row_limits()
         if (stop)
             break
         endif
-        if line =~ s:pattern_resultset_start
+        if line =~ sw#get_pattern('pattern_resultset_start')
             let row_start = row_start + 1
             break
         endif
@@ -529,7 +526,7 @@ function! s:get_row_limits()
             break
         endif
         
-        if (line =~ s:pattern_empty_line || line == '')
+        if (line =~ sw#get_pattern('pattern_empty_line') || line == '')
             let row_end = row_end - 1
             break
         endif
@@ -596,7 +593,7 @@ function! s:print_line(line_idx, n_resultset, do_filter)
         return line
     endif
 
-    let delimiter = line =~ s:pattern_resultset_start ? '+' : '|'
+    let delimiter = line =~ sw#get_pattern('pattern_resultset_start') ? '+' : '|'
     let result = ''
 
     if (len(resultset.hidden_columns) > 0 || len(resultset.filters) > 0)
@@ -618,10 +615,14 @@ function! s:print_line(line_idx, n_resultset, do_filter)
             if has_key(resultset.filters, column)
                 let filter = resultset.filters[column]
                 let filter_in = 1
-                if filter =~ '\v^[\>\<\=]{1,2}'
-                    let filter_in = eval(resultset.columns[a:line_idx][i] . filter)
+                if filter =~ '\v^[ \t\s]*[\>\<\=]{1,2}'
+                    try
+                        let filter_in = eval(resultset.columns[a:line_idx][i] . filter)
+                    catch
+                        let filter_in = 0
+                    endtry
                 else
-                    let filter_in = resultset.columns[a:line_idx][i] =~ filter
+                    let filter_in = substitute(resultset.columns[a:line_idx][i], '\v^[ \t\s]*(.{-})[ \t\s]*$', '\1', 'g') =~ filter
                 endif
                 if !filter_in
                     return '#IGNORE#'
@@ -688,61 +689,49 @@ function! s:build_header(n)
     return header
 endfunction
 
-function! s:display_messages()
-    let messages = ''
-    let n = len(b:resultsets)
-    call reverse(b:resultsets)
-    for resultset in b:resultsets
-        let messages .= s:build_header(n)
-        for line in resultset.messages
-            let messages .= line . "\n"
-        endfor
-        let n = n - 1
-    endfor
-    call reverse(b:resultsets)
-    call s:output_content(messages)
-endfunction
-
 function! s:display_resultsets_continous()
     let lines = ''
     let n = len(b:resultsets)
     call reverse(b:resultsets)
+    let channel = ''
+    if exists('b:current_channel')
+        let channel = b:current_channel
+    endif
     for resultset in b:resultsets
-        if len(resultset.lines) > 0
-            let lines .= s:build_header(n)
+        if (resultset.channel != channel && channel != '')
+            let n -= 1
+            continue
         endif
-        let i = 0
-        for line in resultset.lines
-            let row = s:print_line(i, len(b:resultsets) - n, i > resultset.resultset_start)
-            if !(row =~ s:pattern_ignore_line)
-                let lines .= row . "\n"
+        if b:state == 'resultsets'
+            if len(resultset.lines) > 0
+                let lines .= s:build_header(n)
             endif
-            let i += 1
-        endfor
+            let i = 0
+            for line in resultset.lines
+                let row = s:print_line(i, len(b:resultsets) - n, i > resultset.resultset_start)
+                if !(row =~ s:pattern_ignore_line)
+                    let lines .= row . "\n"
+                endif
+                let i += 1
+            endfor
+        elseif b:state == 'messages'
+            let lines .= s:build_header(n)
+            for line in resultset.messages
+                let lines .= line . "\n"
+            endfor
+        endif
         let n = n - 1
     endfor
     call reverse(b:resultsets)
     call s:output_content(lines)
 endfunction
 
-function! s:display_resultsets(result, ...)
-    if (!s:open_resultset_window())
-        call sw#display_error('Result set cannot be selected. Probably is hidden')
-        return
-    endif
-    call s:process_result(a:result)
-    let continous = 0
-    if a:0
-        let continous = a:1
-    endif
+function! s:display_resultsets(continous)
     if b:state == 'form'
         call sw#sqlwindow#display_as_form()
-    elseif continous
-        if b:state == 'messages'
-            call s:display_messages()
-        elseif b:state == 'resultsets'
-            call s:display_resultsets_continous()
-        endif
+    elseif a:continous
+        call s:display_resultsets_continous()
+
         if g:sw_highlight_resultsets
             set filetype=sw
         endif
@@ -759,54 +748,63 @@ function! s:display_resultsets(result, ...)
     endif
 endfunction
 
-function! s:process_result(result)
+function! s:add_new_resultset(channel)
+    call add(b:resultsets, {'messages': [], 'lines': [], 'hidden_columns': [], 'resultset_start': 0, 'header': [], 'filters': {}, 'title': '', 'rows': 0, 'channel': a:channel})
+endfunction
+
+function! s:process_result(channel, result)
     if a:result == ''
         return
     endif
-    let result = split(a:result, "\n")
+    let lines = split(a:result, "\n")
+    let b:current_channel = a:channel
 
     if !exists('b:resultsets')
         let initial = []
         if g:sw_save_resultsets
             let initial = g:sw_last_resultset
         endif
-        call sw#session#set_buffer_variable('resultsets', initial)
+        let b:resultsets = initial
     endif
 
     let i = 0
     let mode = 'message'
-    let pattern = '\v\c^[\=]+$'
-    call add(b:resultsets, {'messages': [], 'lines': [], 'hidden_columns': [], 'resultset_start': 0, 'header': [], 'filters': {}, 'title': '', 'rows': 0})
+    call s:add_new_resultset(a:channel)
     let n = len(b:resultsets) - 1
-    while i < len(result)
-        if result[i] =~ pattern
+    while i < len(lines)
+        if i + 1 < len(lines) && lines[i + 1] =~ sw#get_pattern('pattern_resultset_start')
+            "" If we have more than one resultset in a go.
+            if len(b:resultsets[n].lines) > 0
+                let n += 1
+                call s:add_new_resultset(a:channel)
+            endif
             let mode = 'resultset'
+            let b:resultsets[n].resultset_start = len(b:resultsets[n].lines)
         endif
 
         let pattern_title = '\v^----  ?(.*)$'
-        if result[i] =~ pattern_title
-            let b:resultsets[n].title = substitute(result[i], pattern_title, '\1', 'g')
+        if lines[i] =~ pattern_title
+            let b:resultsets[n].title = substitute(lines[i], pattern_title, '\1', 'g')
             let i += 1
             continue
         endif
-        if (mode == 'resultset' && (result[i] =~ s:pattern_empty_line || result[i] == ''))
+        if (mode == 'resultset' && (lines[i] =~ sw#get_pattern('pattern_empty_line') || lines[i] == '' || lines[i] =~ sw#get_pattern('pattern_exec_time') || lines[i] =~ sw#get_pattern('pattern_no_results')))
             let mode = 'message'
             call add(b:resultsets[n].lines, '')
         endif
-        if (mode == 'resultset' && !(result[i] =~ pattern))
-            if result[i] =~ s:pattern_no_results
-                let b:resultsets[n].rows = substitute(result[i], s:pattern_no_results, '\1', 'g')
-            else
-                call add(b:resultsets[n].lines, result[i])
-            endif
-        elseif mode == 'message' && result[i] != ''
-            let line = substitute(result[i], "\r", '', 'g')
+        if lines[i] =~ sw#get_pattern('pattern_no_results')
+            let b:resultsets[n].rows = substitute(lines[i], sw#get_pattern('pattern_no_results'), '\1', 'g')
+        endif
+        if (mode == 'resultset')
+            call add(b:resultsets[n].lines, lines[i])
+        elseif mode == 'message' && lines[i] != ''
+            let line = substitute(lines[i], "\r", '', 'g')
             call add(b:resultsets[n].messages, line)
-            if line =~ '\v^Execution time: .*$'
+            if line =~ sw#get_pattern('pattern_exec_time')
                 call add(b:resultsets[n].messages, "")
             endif
         endif
-        if mode == 'resultset' && result[i] =~ s:pattern_resultset_start
+        if mode == 'resultset' && lines[i] =~ sw#get_pattern('pattern_resultset_start')
             let b:resultsets[n].resultset_start = len(b:resultsets[n].lines) - 1
         endif
         let i = i + 1
@@ -825,18 +823,12 @@ function! s:process_result(result)
     echomsg "Command completed"
 endfunction
 
-function! s:do_execute_sql(sql, wait_result)
-    let b:on_async_result = 'sw#sqlwindow#check_results'
+function! s:do_execute_sql(sql)
     echomsg "Processing a command. Please wait..."
-    let result = sw#execute_sql(a:sql, a:wait_result)
-
-    if result != ''
-        call s:display_resultsets(result, 1)
-        call s:switch_to_results_tab()
-    endif
+    call sw#execute_sql(a:sql)
 endfunction
 
-function! sw#sqlwindow#execute_sql(wait_result, sql)
+function! sw#sqlwindow#execute_sql(sql)
     let w:auto_added1 = "-- auto\n"
     let w:auto_added2 = "-- end auto\n"
 
@@ -861,82 +853,70 @@ function! sw#sqlwindow#execute_sql(wait_result, sql)
             let _sql = substitute(_sql, g:parameters_pattern, g:sw_p_prefix . '\1' . g:sw_p_suffix, 'g')
         endif
     endif
-    call s:do_execute_sql(_sql, a:wait_result)
+    call s:do_execute_sql(_sql)
 endfunction
 
-function! sw#sqlwindow#execute_macro(macro, wait_result)
-    call s:do_execute_sql(a:macro, a:wait_result)
+function! sw#sqlwindow#execute_macro(...)
+    if (a:0)
+        let macro = a:1
+    else
+        let macro = sw#sqlwindow#extract_current_sql()
+    endif
+    call s:do_execute_sql(macro)
 endfunction
 
 function! sw#sqlwindow#get_object_info()
-    if (!exists('b:port'))
+    if (!exists('b:sw_channel'))
         return
     endif
 
     let obj = expand('<cword>')
-    let sql = "desc " . obj
-    call sw#sqlwindow#execute_sql(0, sql)
+    let sql = "desc " . obj . ';'
+    call sw#sqlwindow#execute_sql(sql)
 endfunction
 
 function! sw#sqlwindow#get_resultset_name()
     return '__SQLResult__'
 endfunction
 
-function! sw#sqlwindow#close_all_result_sets()
-    if bufname('%') =~ '\v__SQLResult__'
-        return
-    endif
-    if exists('g:sw_session')
-        let name = bufname('%')
-        let rs_name = sw#sqlwindow#get_resultset_name()
-        for k in keys(g:sw_session)
-            if k =~ '\v^__SQLResult__' && k != rs_name
-                if bufwinnr(k) != -1
-                    call sw#goto_window(k)
-                    call sw#session#set_buffer_variable('hidden', 1)
-                    hide
-                    call sw#goto_window(name)
-                endif
-            endif
-        endfor
+function! sw#sqlwindow#open_resulset_window()
+    if (exists('b:sw_channel'))
+        let channel = b:sw_channel
+        if (!s:open_resultset_window())
+            call sw#display_error('Result set cannot be selected. Probably is hidden')
+            return
+        endif
+        let b:current_channel = channel
+        call sw#goto_window(sw#sqlwindow#get_resultset_name())
+        call sw#session#set_buffer_variable('state', 'resultsets')
+        let b:resultsets = g:sw_last_resultset
+        call s:display_resultsets(1)
     endif
 endfunction
 
-function! sw#sqlwindow#check_hidden_results()
-    if exists('g:sw_session')
+function! sw#sqlwindow#check_results()
+    if exists('b:sw_channel')
+        let channel = b:sw_channel
         let name = sw#sqlwindow#get_resultset_name()
-        if bufwinnr(name) != -1
-            return
-        endif
-        if has_key(g:sw_session, name)
-            if has_key(g:sw_session[name], 'hidden')
-                if g:sw_session[name]['hidden']
-                    let s_below = &splitbelow
-                    set splitbelow
-                    execute "split " . name
-                    call sw#session#reload_from_cache()
-                    call sw#session#unset_buffer_variable('hidden')
-                    call sw#set_special_buffer()
-                    call sw#sqlwindow#set_results_shortcuts()
-                    ""call sw#session#autocommand('BufEnter', 'sw#sqlwindow#set_results_shortcuts()')
-                    if !s_below
-                        set nosplitbelow
-                    endif
-                    call s:display_resultsets('', 1)
-                endif
+        if sw#is_visible(name)
+            call sw#goto_window(name)
+            if (exists('b:current_channel') && b:current_channel != channel) || !exists('b:current_channel')
+                let b:current_channel = channel
+                call s:display_resultsets(1)
             endif
+            call sw#goto_window(bufname(expand('<afile>')))
         endif
     endif
 endfunction
 
 function! sw#sqlwindow#get_object_source()
-    if (!exists('b:port'))
+    if (!exists('b:sw_channel'))
         return
     endif
 
     let obj = expand('<cword>')
-    let sql = 'WbGrepSource -searchValues="' . obj . '" -objects=' . obj . ' -types=* -useRegex=true;'
-    call sw#sqlwindow#execute_sql(0, sql)
+    let sql = 'WbGenerateScript -objects="' . obj . '";'
+    call sw#sqlwindow#execute_sql(sql)
 endfunction
 
 function! sw#sqlwindow#folding(lnum)
@@ -954,4 +934,55 @@ function! sw#sqlwindow#folding(lnum)
     endif
 
     return -1
+endfunction
+
+function! sw#sqlwindow#show_current_buffer_log()
+    if !exists('b:sw_channel')
+        call sw#display_error("The current buffer is not an SQL Workbench buffer. Open it using the SWOpenSQL command.")
+        return
+    endif
+
+    let log = substitute(sw#server#channel_log(b:sw_channel), "\r", "\n", 'g')
+    let log_name = "__LOG__" . fnamemodify(bufname('%'), ':t')
+    call sw#goto_window(log_name)
+
+    if bufname('%') != log_name
+        execute "split " . log_name
+    endif
+
+	" Mark the buffer as scratch
+	setlocal buftype=nofile
+    setlocal filetype=txt
+	setlocal bufhidden=wipe
+	setlocal noswapfile
+	setlocal nowrap
+	setlocal nobuflisted
+
+	silent put = log
+endfunction
+
+function! s:filter_resultsets(idx, val)
+    return exists('b:sw_channel') ? a:val['channel'] != b:sw_channel : a:val['channel'] != b:current_channel
+endfunction
+
+function sw#sqlwindow#wipeout_resultsets(all)
+    if a:all
+        let g:sw_last_resultset = []
+    elseif exists('b:sw_channel') || exists('b:current_channel')
+        call filter(g:sw_last_resultset, function('s:filter_resultsets'))
+    endif
+
+    if sw#is_visible(sw#sqlwindow#get_resultset_name())
+        call sw#goto_window(sw#sqlwindow#get_resultset_name())
+        bwipeout
+    endif
+endfunction
+
+function! sw#sqlwindow#get_count(statement)
+    if a:statement =~ '\v^[ \t\s]*[^ \t\s]+[ \t\s]*$'
+        let sql = "select count(*) from " . a:statement . ';'
+    else
+        let sql = "select count(*) from (" . sw#ensure_sql_not_delimited(a:statement, ';') . ") t" . ';'
+    endif
+    call sw#sqlwindow#execute_sql(sql)
 endfunction

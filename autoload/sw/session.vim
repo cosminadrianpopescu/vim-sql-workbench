@@ -98,6 +98,7 @@ function! sw#session#unset_buffer_variable(var)
 endfunction
 
 function! sw#session#sync()
+    return 
     if !exists("g:SessionLoad")
         for buffer in keys(g:sw_session)
             if !buffer_exists(buffer)
@@ -110,6 +111,7 @@ function! sw#session#sync()
 endfunction
 
 function! sw#session#restore()
+    return
     let g:sw_session = {}
     let g:sw_autocommands = {}
     if exists('g:Str_sw_session')

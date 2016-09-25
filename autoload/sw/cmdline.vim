@@ -19,30 +19,19 @@
 
 let s:last_result = ''
 
-function! sw#cmdline#execute(wait_result, port, ...)
+function! sw#cmdline#execute(channel, ...)
+    let s:last_result = ''
     let sql = ''
     let i = 1
     while i <= a:0
         execute "let sql .= ' ' . a:" . i
         let i = i + 1
     endwhile
-    let b:on_async_result = 'sw#sqlwindow#check_results'
-    let b:delimiter = ';'
-    let result = sw#server#execute_sql(sql, a:wait_result, a:port)
-    if result != ''
-        call s:process_results(result)
-    endif
+    call sw#server#execute_sql(sql . ';', a:channel, 'sw#cmdline#got_result')
 endfunction
 
-function! sw#cmdline#got_result()
-    let s:last_result = sw#server#fetch_result()
-    if results != ''
-        call s:process_results(result)
-    endif
-endfunction
-
-function! s:process_results(result)
-    let s:last_result = a:result
+function! sw#cmdline#got_result(result)
+    let s:last_result .= a:result
 endfunction
 
 function! sw#cmdline#show_last_result()

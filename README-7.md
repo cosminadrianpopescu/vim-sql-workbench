@@ -7,37 +7,27 @@ it, here is the quick start:
 * install `SQL Workbench/J` from [here](http://www.sql-workbench.net/)
 * install your `jdbc` driver for your database see
   [here](http://www.sql-workbench.net/)
+* open a terminal window
+* `cd ~/.vim/bundle/vim-sql-workbench/resources/py`
+* `./sqlwbserver.py -c path/to/sql-workbench/sqlwbconsole.sh -o 5000`
 * open vim
 
 *Running sql queries against a DBMS*:
 
-* set the `g:sw_config_dir` variable
-* open your sql buffer
-* if you have `CtrlP` installed you can do `CtrlP` and then select `SQL
-  Workbench profiles` and choose your profile
-* otherwise, you can do `:SWSqlBufferConnect` and then in the buffer execute
-  `WbConnect` (`<Leader>C-<SPACE>`)
+* `:SWSqlConnectToServer 5000 path/to/sql_buffer.sql`
 * go to an sql statement
-* in normal mode, do `<Leader><C-@>` (this is `ctrl` + `space`)
+* in normal mode, do `<C-@>` (this is `ctrl` + `space`)
 
 *Opening a database explorer*
 
-* `:SWDbExplorer <my-profile>`
+* `:SWDbExplorer <my-profile> 5000`
 
 *Note*: 
 
-* `<my-profile>` is the name of a database profile created in `SQL Workbench/J`
+* `<my-profile>` is the name of a database profile create in `SQL Workbench/J`
   (see [here](http://www.sql-workbench.net/manual/profiles.html))
 
 For more detailed explanations, please continue reading this material.
-
-Disclaimer
-========================================
-
-Please note that this version is no longer compatible with VIM 7. If you
-didn't upgraded to VIM 8 yet, then don't install this version. Stick with
-5.2.2. But you should consider upgrading your vim anyway. For the
-documentation of `5.2.2`, please see [here](README-7.md)
 
 Introduction
 ========================================
@@ -60,7 +50,6 @@ You can connect to any DBMS directly from VIM.
 * search in table or views data
 * asynchronous (you can execute any command asynchronous)
 * fully customizable
-* transactions
 
 CONTENTS:
 
@@ -71,60 +60,118 @@ CONTENTS:
 5. SQL commands
 6. Searching
 7. Exporting
-8. Variables
-9. Commands
-10. Settings
-11. Screen shots
+8. Sessions
+9. Variables
+10. Commands
+11. Settings
+12. Screen shots
 
 Requirements
 ========================================
 
-* `Vim 8`
+* `Vim` compiled with `python` support
+* `Python` installed on the machine
 * `SQL Workbench/J` installed on the machine
+* Optional: [`vim dispatch`](https://github.com/tpope/vim-dispatch) plugin
+  installed.
+* `VIM` started in server mode
 
-*NOTE*: this version of `vim-sql-workbench` is not compatible with vim 7 anymore.
-
-Of course you need VIM 8 or above. You also need [`SQL
+Of course you need VIM 7 or above. You also need [`SQL
 Workbench/J`](http://www.sql-workbench.net/) installed on your computer. It is
 platform independent, since `SQL Workbench` is written in JAVA and it should
 work anywhere where VIM works. 
 
 Before getting started, you have to set the `g:sw_exe` vim variable. The
-default value is `sqlwbconsole.sh`. Otherwise, just set the value of the
-variable to point to your `sqlwbconsole` file. If you are on Windows, it
-should be `sqlwbconsole.exe`. 
+default value is `sqlwbconsole.sh`. If you have `SQL Workbench` in your PATH,
+then you can skip this step. Otherwise, just set the value of the variable to
+point to your `sqlwbconsole` file. If you are on Windows, it should be
+`sqlwbconsole.exe`. 
 
 Also, if you are on Windows, you have to set the `g:sw_tmp` value in your
 `vimrc`. The default value is `/tmp`. 
 
-If you are on window, your `SQL Workbench/J` should be configured to not use
-the `jline` (set the `workbench.console.use.jline=false` in your `SQL
-Workbench/J` config file).
+The communication with the DBMS is made through the `sqlwbserver.py` script, that
+you can find in the `resources/py` folder of the plugin. This is a `python`
+script (hence the need to have `python` installed on the machine) and it will
+spawn a `sqlwbconsole` instance in memory and then open a port on which will
+listen for requests. After this, whenever you want to send a command to the
+DBMS from `VIM`, the plugin will connect on the specified port, send the
+command and retrieve the result which will be displayed in `VIM`. 
+
+In order to work properly, you should keep the settings on default. Settings
+like `workbench.console.script.showtime` could affect the functionality of
+`VIM sql workbench`.
+
+*Note*:
+
+Please note that the last version of the `sqlwbserver.py` script is not
+compatible with `SQL Workbench/J` before build 118. To use it with a previous
+build, you will have to use the `-O 1` parameter. Also, f you want to use a
+version of `SQL Workbench` prior to 118, you have to set the `vim` variable
+`g:sw_use_old_sw` to `1`.
 
 Connecting to a DBMS
 ========================================
 
-`VIM Sql workbench` has integration with the `CtrlP` plugin. You can set the
-`g:sw_config_dir` variable (which contains the `WbProfiles.xml` file) and then
-you open your buffer, open `CtrlP`, select `SQL Workbench profiles`, select
-your profile and you can begin sending sql queries to your database.
+First of all, you need to open have a `sqlwbserver` running in memory. There
+are two ways to run a server. 
 
-If you don't have `CtrlP` installed, you can use the `:SWSqlBufferConnect`
-command. This will open your buffer and connect it to the `SQL Workbench/J`.
-If you run it without any arguments, the current buffer will be connected with
-a `SQL workbench/J` instance.
+## Starting a server from vim
+
+For this you need to have the `vim dispatch` plugin installed. If you want to
+start the server from `vim`, you can call the command `SWServerStart` with the
+port on which the server will listen. Also, you can choose a profile for the
+new connection. If you don't choose a profile now, you will have to execute
+[`WbConnect`](http://www.sql-workbench.net/manual/wb-commands.html#command-connect)
+in order to connect to a database. 
+
+For example: `SWServerStart 5000`. 
+
+## Starting a server from command line
+
+If you don't want or you can't install the `vim dispatch` plugin, you can
+always start a server from command line. From your terminal, you need to
+run the `resources/py/sqlwbserver.py` script. For a list of parameters you can
+do `resources/sqlwbserver --help`. The following parameters are mandatory: 
+
+* The path to your `sqlwbconsole` executable (`-c`). 
+
+The default port on which the server will listen is 5000. You can change this
+with the `-o` parameter. 
+
+Please note that a server handles only one `sqlwbconsole` instance, which is
+not multi threading, so also the server is not multi-threading. Since a
+command sent to a DBMS through `sqlwbconsole` cannot be interrupted, there is
+no reason to have `sqlwbserver` working multi-threading. A new command will
+have to wait anyway for the old one to finish. 
+
+If you want to have several connections to a database, you can open another
+server (run again `sqlwbserver`) on another port. Of course, each server will
+have it's own opened transactions. You cannot do an `update` on a port and a
+`rollback` on the other port. 
+
+Though, when you open a database explorer (which requires a profile), a new
+instance of `sqlwbconsole.sh` will be launched on a different thread. So any
+commands for the database explorer will be run in parallel with any command
+launched from any `vim` buffer connected to the same port. 
 
 *Example*: 
 
 ```
-:SWSqlBufferConnect ~/Documents/my-buffer.sql
+`resources/sqlwbconsole -t /tmp -c /usr/bin/sqlwbconsole.sh -o 5000`
 ```
 
-Once you connected your buffer (either by `CtrlP` or by using
-`SWSqlBufferConnect`), a new `sqlwbconsole.sh` process will be launched. This
-will have it's own connection and it's own transaction. If you close the
-buffer, also the process will be closed. Also, if you do
-`:SWSqlBufferDisconnect`, the `sqlwbconsole` instance will be closed.
+*Note*:
+
+For `SQL Workbench/J` prior to build 118, please set the `g:sw_use_old_sw`
+variable to 1
+
+## Connecting a vim buffer
+
+Once you have a server opened, you can connect any vim buffer to that server
+using `SWSqlConnectToServer` command. Once a buffer is connected to a server,
+you can send any command from that buffer to the DBMS using the
+`SWSqlExecuteCurrent`, `SWSqlExecuteSelected` or `SWSqlExecuteAll` commands. 
 
 The database explorer
 ========================================
@@ -134,14 +181,14 @@ In order to open a database explorer, you need a profile.
 You can create `SQL Workbench` profiles, either by using the `SQL Workbench`
 GUI, like
 [here](http://www.sql-workbench.net/manual/profiles.html#profile-intro),
-either opening a sql buffer with `SWSqlBufferConnect` and then executing
+either opening a sql buffer with `SWSqlConnectToServer` and then executing
 `WbStoreProfile`. 
 
 Once you have your profiles created, you can use `SWDbExplorer` with the
 desired profile as argument and you will connect to the database. 
 
-For example, `:SWDbExplorer myProfile` will open a database explorer using the
-profile `myProfile`.
+For example, `:SWDbExplorer 5000 myProfile` will open a database explorer
+using the profile `myProfile` and the server which listens on the 5000 port. 
 
 The database explorer is composed from three parts: on the top, there is a
 list of available shortcuts at any moment. On the bottom left, you will see
@@ -205,9 +252,9 @@ For example:
 When the shortcut D will be pressed, the result will be fetch by calling
 `My_function(getline('.'))`
 
-Of course, the current line is relevant only for when changing a tab. When
-changing a tab, the current line will contain whatever value is on the
-current line in whatever buffer you are at that moment.
+Of course, the current line is only relevant only for when changing a tab.
+When changing a tab, the current line will contain whatever value is on the
+currently line in whatever buffer you are at that moment.
 
 The values for each profile, have to be a list which will contain all the
 options for the left panel. For example, in the default one, the database
@@ -288,16 +335,15 @@ if you want to add the database links for all the profiles, you have to add
 this in your `vimrc`: 
 
 ```
-call sw#dbexplorer#add_tab('oracle', 'DB Links', 'L', 'select db_link, username,
+call sw#dbexplorer#add_tab('*', 'DB Links', 'L', 'select db_link, username,
 created  from user_db_links;', [{'title': 'Show the host', 'shortcut': 'H',
 'command': "select host from user_db_links where db_link = '%object%'"}])
 ```
 
-Now on all your oracle profiles, you will have an extra option. Every time
-when you click "L" in normal mode, in the bottom left panel you will have a
-list of database links from your schema. For each link, you can move the
-cursor on top of it and click H. You will see in the right panel the source of
-the link. 
+Now on all profiles, you will have an extra option. Every time when you click
+"L" in normal mode, in the bottom left panel you will have a list of database
+links from your schema. For each link, you can move the cursor on top of it
+and click H. You will see in the right panel the source of the link. 
 
 Every time when "L" is clicked, `vim-sqlworkbench` sends the `select db_link,
 username, created from user_db_links;` command to the DBMS. The result will be
@@ -306,30 +352,17 @@ your cursor on top of one of this links and press "H", the plugin sends to
 your DBMS `select host from user_db_links where db_link =
 '<selected_link_name>';`. The result is displayed in the right panel.
 
-You can also add a panel to an existing tab, using the
-`sw#dbexplorer#add_panel` function. The function takes the following arguments:
-
-* The profile (the profile for which the option should be active; it can be
-  `*` for all profiles)
-* The tab shortcut (is the shortcut identifying the tab for which to add this
-  panel)
-* The title (this is the title that will appear on the top panel)
-* The shortcut (this is the shortcut to access it after you accessed the tab)
-* The command (this is the SQL command to be sent to the DBMS once this option
-  is selected
-
-
 The SQL buffer
 ========================================
 
 The SQL buffer is a normal `vim` buffer from which you can send SQL commands
-to your DBMS and in which you can use the user completion (&lt;C-x&gt;&lt;C-u&gt;) to have
+to your DBMS and in which you can use the omni completion (&lt;C-x&gt;&lt;C-o&gt;) to have
 intellisense autocompletion. 
 
 You can connect an opened vim buffer to a server using the
-`SWSqlBufferConnect` command. Or, you can open a buffer which will be directly
-connected to a server by specifying the path to the buffer. For example
-`SWSqlBufferDisconnect /tmp/dbms.sql`.
+`SWSqlConnectToServer <port>` command. Or, you can open a buffer which will be
+directly connected to a server by specifying the path to the buffer after the
+port. For example `SWSqlConnectToServer 5000 /tmp/dbms.sql`
 
 Once in an sql buffer, you have several ways to execute commands against your
 DBMS: 
@@ -354,7 +387,7 @@ As soon as a SQL buffer is opened the shortcuts from the
 `g:sw_shortcuts_sql_buffer_statement` will be mapped. If the variable is not
 set, then the `resources/shortcuts_sql_buffer_statement.vim` file is loaded.
 So, have a look at this file for further details. Please note that for
-executing the current SQL, the default shortcut is `<leader>ctrl + space`.
+executing the current SQL, the default shortcut is `ctrl + space`.
 
 The same goes for a result set buffer. The shortcuts from the file pointed by
 the `g:sw_shortcuts_sql_results` variable are loaded. If the variable is not
@@ -380,7 +413,7 @@ time when you open this buffer.
 
 ## Execute the current statement
 
-As stated already, you can press `<leader>ctrl + space` in normal mode or
+As stated already, you can press `ctrl + space` in normal or insert mode or
 you can have your own shortcut. Alternatively, in normal mode, you can execute
 `SWSqlExecuteCurrent` command. 
 
@@ -388,20 +421,49 @@ The statement between the last 2 delimiters will be sent to the server, or
 from the beginning of the file until the first delimiter, or from the last
 delimiter to the end of the file, depending on where your cursor is placed. 
 
+By default, if you execute `SWSqlExecuteCurrent`, vim will wait for the result
+before continuing. If you don't want to wait for the result, you can execute
+`SWSqlExecuteCurrent!`. 
+
+*Note*: The default shortcut is mapped using `SWSqlExecuteCurrent!`, which
+means that pressing `Ctrl + space` will execute the current command asynchronous. 
+
 ## Execute the selected statement
 
-In visual mode, you can press `<leader>ctrl + e` or your own custom shortcut.
+In visual mode, you can press `ctrl + e` or your own custom shortcut.
 Alternatively, you can execute the `SWSqlExecuteSelected` command. Please be
 careful to delete the range before, if you want to execute the command from
 the visual mode. 
 
 The selected text is going to be sent to the DBMS. 
 
+Like before, if you want the command executed asynchronous, you have to use
+the exclamation mark after it (`SWSqlExecuteSelected!`). By default, this is
+mapped on `ctrl + e`. You can change this mapping.
+
 ## Execute all statements
 
-In visual mode, you can press `<leader>ctrl + a` or your own custom shortcut.
+In visual mode, you can press `ctrl + a` or your own custom shortcut.
 Alternatively, you can execute the `SWSqlExecuteAll` command. All the buffer
 is going to be sent to the DBMS. 
+
+Also here you can use an exclamation mark to execute the command asynchronous,
+which is the default mapping. 
+
+## Profiling
+
+Unfortunately, the `SQL Workbench/J` console application does not return the
+time that it took for a command to execute. This plugin will try to do some
+profiling, but it will report the full time it took for a command to execute.
+This means that this time will also include the communication with the
+`sqwbconsole` server, the time to display the results in console (if on debug
+mode) the time it took `SQL Workbench/J` console application to communicate
+with the DBMS via `jdbc` and any other operations involved. 
+
+So, if you want to do some profiling, try to either to `select count(*) from
+your_table` (this would eliminate some operations, like displaying the results
+in console if in debug mode) or to set the maximum number of results to a low
+value (like 10). And (of course), send only one query at a time.
 
 ## Intellisense
 
@@ -414,7 +476,7 @@ mode in a sql statement.
 
 *Note*: due to constant conflicts with dbext plugin (which apparently has some
 parts included in the `/usr/share/vim` folder) I prefer to switch to
-&lt;C-x&gt;&lt;C-u&gt;. So, you cannot use &lt;C-x&gt;&lt;C-o&gt; anymore for
+&lt;C-x&gt;&lt;C-u&gt;. So, you cannot use &lt;C-x&gt;&lt;C-u&gt; anymore for
 intellisense
 
 The plugin will try to determine where you are in the sql and return the
@@ -443,7 +505,7 @@ autocomplete loaded every time you open a file.
 
 If you modify a table then, you can do `SWSqlAutocomplete modified_table`.
 This will be very fast, as it will only load the data for the table. You can
-send as many tables at once. Of course, more tables you send, the longer it
+sent as many tables at once. Of course, more tables you send, the longer it
 will take to complete. For example, you can do `SWSqlAutocomplete
 modified_table1 modified_table2`. This will reload the data for
 `modified_table1` and `modified_table2`. 
@@ -457,7 +519,7 @@ combine in the same statement adding and deleting of tables. For example:
 You can also execute `SWSqlAutocomplete!`. This will reset any autocomplete
 option and will reload again all the tables. 
 
-Unfortunately, the autocomplete for the functions and procedures is limited.
+Unfortunately, the autocomplete for the function and procedures is limited.
 This is because `SQL Workbench/J` does not provide also a list of parameters
 through a `SQL Workbench` command. I can only retrieve the name of the
 function or procedure. Also, the autocomplete for the procedure and functions
@@ -471,7 +533,7 @@ me know.
 ## Get an object definition
 
 When with the cursor on top of any word in the buffer or in the result set,
-you can click `<leader>oi` or your own custom shortcut. This will display that
+you can click `alt + i` or your own custom shortcut. This will display that
 object definition if the object exists in the result set buffer or an error 
 message. 
 
@@ -483,7 +545,7 @@ returned.
 ## Get an object source
 
 When you are with the cursor on top of any word in the buffer or in the result
-set, you can click `<leader>os` or your own custom shortcut. This will display
+set, you can click `alt + s` or your own custom shortcut. This will display
 the object source if the object exists in the result set buffer or an error 
 message.
 
@@ -498,7 +560,7 @@ can change this with the `set maxrows` command. See
 
 ## Changing result sets display mode
 
-In the result set buffer, you can click `<leader>d` or your own custom shortcut
+In the result set buffer, you can click `alt + d` or your own custom shortcut
 on top of a row. This will toggle the row display to have each column on a row
 for the selected row. To change back the display mode, click again the same 
 shortcut. 
@@ -534,46 +596,12 @@ an autocomplete with the available columns).
 
 Example: `SWSqlHideColumn last_name`
 
-## CtrlP integration
-
-`VIM Sql workbench` provides integration with the `CtrlP` plugin. In order to
-activate it, you need to set the `g:sw_config_dir` option to point to your
-`SQL Workbench/J` configuration directory. Then, in your `.vimrc` file, you
-need to activate the `CtrlP` extension `sw_profiles`, by setting the
-`g:ctrlp_extensions` variable.
-
-By activating the integration, you can change a buffer connection with
-`CtrlP`. You activate `CtrlP` and then select the `SQL Workbench profiles` tab
-and select your profile. If the buffer is already connected to an `SQL
-Workbench/J` instance, then the current connection will be changed. If no,
-then the buffer will get connected to an `SQL Workbench/J` instance and also
-open a connection to the selected profile.
-
-## Airline integration
-
-`VIM Sql workbench` also provides integration with [`VIM
-Airline`](https://github.com/vim-airline/vim-airline) plugin. Since I haven't
-really found out how to create an extension and place it in any folder, you
-will have to manually copy the `resources/airline/sw.vim` file into the
-`Airline` extensions folder. Then you need to enable the extension in your
-`.vimrc` file by setting the `g:airline_extensions` variable to include the
-`sw` extension. 
-
-Once you activate the integration, every time when you connect a buffer to an
-`SQL Workbench/J` instance, you will see the in the status bar the current
-url (next to the file name). If the buffer is connected to `SQL Workbench/J`,
-but is not connected to a DBMS, then you will see the `NOT CONNECTED` string.
-
-Alternatively, if you don't use Airline integration, you can still see the
-current url in the status line by activating the status line in vim (`set
-laststatus = 2`) and then you can set the status line to include the buffer
-url. For example: `set statusline=%!sw#server#get_buffer_url(bufname('%'))`.
-
 SQL commands
 ========================================
 
 You can send a sql query to the DBMS from the vim command line using the
-command `SWSqlExecuteNow`. The parameters are the sql query. Please note that
+command `SWSqlExecuteNow`. The first parameter is the port of the server on
+which to execute, and the next parameters are the sql query. Please note that
 by default no results will be shown. If you want to see all that happened on
 the server side, use the `SWSqlExecuteNowLastResult` command. This will show
 you what happened with the last command sent from the vim command line. 
@@ -582,11 +610,11 @@ This is useful if you want to put vim shortcuts for simple things. Like, for
 example, you could have in your `vimrc`:
 
 ```
-nnoremap <leader>t :SWSqlExecuteNow wbdisplay tab;<cr>
+nnoremap <leader>t :SWSqlExecuteNow 5000 wbdisplay tab;<cr>
 ```
 
 Then pressing `<leader>t` in normal mode, would set the display to tab for the
-current buffer.
+instance listening on port 5000.
 
 *Note*: This command will not be recorded in `g:sw_last_sql_query`. The
 delimiter is the `;`.
@@ -601,7 +629,7 @@ or you can search tables data.
 
 ## Searching in objects source code
 
-Of course, you can always execute `WbGrepSource` in a sql buffer and send it to
+Of course, you can always execute `WbGrepSource` in a sqlbuffer and send it to
 the DBMS. For a full documentation of the command, please see
 [here](http://www.sql-workbench.net/manual/wb-commands.html#command-search-source).
 
@@ -618,6 +646,19 @@ default values. For a list of these, see the above link.
 
 The `SWSearchObjectAdvanced` command will open an interactive command prompt
 asking for every parameter value, beginning with the search terms.
+Additionally, it will also require the columns to be displayed from the search
+result. If you want to only search for some objects that contain a certain
+term in their definition, you might not want to include the code of the
+object. This might take multiple rows. In this case you will have to scroll in
+the result buffer to see all the objects containing your term. If this is the
+case, you can include only the "NAME" and "TYPE" columns. 
+
+If you leave the columns empty, then the plugin will return all the columns
+but will remove all the rows from the source column. Only the first row from
+each column will be displayed. If you want to see all the columns with all the
+rows, you have to specify all the columns in the columns section
+(`NAME,TYPE,SOURCE`). Please note that you cannot change the order of the 
+columns. 
 
 The `SWSearchObjectDefaults` command takes one argument (the search terms) and
 will perform a search using all the defaults defined in `vim-sqlworkbench`
@@ -635,11 +676,12 @@ Alternatively, you can call one of the three `vim-sqlworkbench` search
 commands available: `SWSearchData`, `SWSearchDataAdvanced` or
 `SWSearchDataDefaults`. 
 
-All the three commands work as their counter parts for searching object.
+All the three commands work as their counter parts for searching object with
+the exception that no column can be selected any more. 
 
 If you are in an sql buffer, then the results are displayed in the result sets
 buffer. If you are in a database explorer, then the search results are
-displayed in the bottom left panel. 
+displayed in the bottom right panel. 
 
 Exporting
 ========================================
@@ -669,12 +711,31 @@ However, you can export as `ods`, which is what you should use anyway. See
 [here](http://www.fsf.org/campaigns/opendocument/) or
 [here](http://www.fsf.org/campaigns/opendocument/download)
 
+Sessions
+========================================
+
+`vim-sqlworkbench` provides support for vim sessions. You have to have the
+`globals` enabled in your session options (`set sessionoptions+=globals`). 
+
+However, the session restore is done in two steps. As soon as you restore a
+vim session, you will notice that for example a database explorer is empty and
+pressing the shortcuts will have no effect. You have, when entering in the
+tab, to call the command `SWDbExplorerRestore`. 
+
+Similar, when entering an sql buffer after a session restore, you will notice
+that executing statements against the DBMS will produce vim errors. Before
+executing any statement, you have to call the `SWSqlBufferRestore`. This will
+also restore the autocomplete list, so you will also have the autocomplete. 
+
 Variables
 ========================================
 
 `SQL Workbench/j` supports user defined variables (you can have your queries
 sent to the database parameterized). See
 [here](http://www.sql-workbench.net/manual/using-variables.html). 
+
+This plugin takes advantage of that and implements a few commands to help you
+use variables.
 
 By default, in `SQL Workbench`, the variables are enclosed between `$[` and
 `]`. [These can be
@@ -717,6 +778,10 @@ system will generate an error.
 
 If you specify a profile name, then the database explorer which is opened for
 the indicated profile is closed. 
+
+## SWDbExplorerRestore
+
+After a session restore, this command will restore an opened database panel
 
 ## SWSqlExecuteCurrent
 
@@ -789,6 +854,14 @@ uses the defaults of `SQL Workbench/J`. The command which is used is
 default values
 [here](http://www.sql-workbench.net/manual/wb-commands.html#command-search-source).
 
+The search result will only return the first row of each column. This means
+that you will have to select each term that you want to inspect and see it's
+source using the `SWSqlObjectSource` command. If you want to see the full
+output you have to either set `g:sw_search_default_result_columns` to
+'NAME,TYPE,SOURCE' and execute the command `SWSearchObjectDefaults`, or you
+can execute the `SWSearchObjectAdvanced` command and select all three columns
+when asked. 
+
 ## SWSearchObjectAdvanced
 
 This command will perform an advanced search. It will ask for each possible
@@ -859,6 +932,51 @@ plugin cache.
 
 The arguments are useful, if you use the `g:sw_autocomplete_on_load` option. 
 
+## SWSqlBufferRestore
+
+This command will restore the properties of the sql buffer following a vim
+session restore. This includes the autocomplete intellisense of the buffer, if
+this was active when `mksession` was executed. 
+
+## SWServerStart
+
+*Parameters*:
+
+* the port: the port on which the server will listen
+* the profile: optional, you can choose a profile when starting the server
+
+This command will spawn a new server which will launch a `SQL Workbench/J` in
+console mode. This can be used if you want to use transactions. 
+
+Please note that you need `vim dispatch` plugin in order to run this from
+`vim`. 
+
+## SWServerStop
+
+*Parameters*:
+
+* the port: the port of the server to close. 
+
+This command will stop a server. Also the `SQL Workbench/J` instance in
+console mode will be closed. 
+
+## SWSqlConnectToServer
+
+*Parameters*: 
+
+* port: the port of the server
+* file name (optional): the name of the file to open. 
+
+This will open a new buffer which will be connected to an existing
+`sqlwbconsole` server. If the file name is not specified, then it will connect
+the current buffer to the server on the specified port. 
+
+## SWDbExplorerReconnect
+
+Reconnects the database explorer. This is useful if a timeout has occured
+while having a database connection opened. Then you call the
+`SWDbExplorerReconnect` in order to be able to execute commands again. 
+
 ## SWDbExplorerToggleFormDisplay
 
 If on a line in the results panel which contains a row in a resultset, then
@@ -876,9 +994,6 @@ statements, the results are stored in the resultsets buffer. When you close
 it, and then execute another sql statement, you will notice that the latest
 result sets are still there. If you don't want this, you can call this
 command. Next time you execute an sql statement, the resultsets will be empty.
-
-If you want to wipeout all the resultsets for all buffers, you have to execute
-the command followed by a `!` (`SWSqlWipeoutResultsSets!`).
 
 ## SWSqlShowOnlyColumn
 
@@ -926,10 +1041,7 @@ This will hide the indeicated column.
 
 * column name: the name of the column to filter
 
-This will apply a filter on the specified column. The filter can be either a
-mathematical expression (like `<= 2`) if the column is an `integer` or `float`
-column. If the column is of type `string`, you can have as a filter a regular
-expression. For example, `^exact name$`.
+This will apply a filter on the specified column. 
 
 *Note*: there is an autocomplete for the column name
 
@@ -947,62 +1059,13 @@ This will remove any filters applied on the specified column.
 
 This will remove all filters applied for the current resultset.
 
-#SWSqlBufferConnect
-
-*Parameters*:
-
-* buffer name: the name of the buffer to open and connect to an `SQL
-  Workbench/J` instance (optional)
-
-This command will open the selected buffer and connect it to an `SQL
-Workbench/J` instance. If the parameter is missing, then the current buffer
-will be connected to an `SQL Workbench/J` instance.
-
-*Note*: when you close the buffer, the `SQL Workbench/J` instance process will
-also be killed. If you want to close it gracefully, you can use
-`SWSqlBufferDisconnect` command, which will send an `exit` to the `SQL
-Workbench/J`.
-
-## SWSqlBufferDisconnect
-
-This command will disconnect the current buffer from the `SQL Workbench/J` and
-close the `sqlwbconsole` process.
-
-## SWSqlGetSqlCount
-
-In a connected sql buffer, if you call this command, a query will be sent to
-the DBMS fetching the number of rows of the current sql. For example, if your
-cursor is on the `select * from mu_table`; and you call this command, then
-the query sent to the DBMS is `select count(*) from (select * from my_table);`
-
-## SWSqlGetObjRows
-
-In a connected sql buffer, if you call this command, a query will be sent to
-the DBMS to fetch the number of rows of the currently selected object. For
-example, if your cursor is on top of the `my_table` identifier and you call
-this command, the query sent to the DBMS is `select count(*) from my_table`.
-
-## SWSqlShowActiveConnections
-
-This command will display a list of all the active connected buffers to a `SQL
-Workbench/J` instance with their connection strings.
-
-## SWSqlShoLog
-
-This command will open the log of the sql queries sent to the DBMS. If the
-`g:sw_log_to_file` is set to true, then the name of the file in which the log
-is performed is returned. Otherwise you will see the log.
-
-## SWSqlShowLastResultset
-
-This command will re-open the resultsets window without sending a new command
-to the DBMS.
-
 Settings
 ========================================
 
 ## Search object source settings:
 
+* `g:sw_search_default_result_columns`: the default list of columns to be
+  included in a search result; default value: ""
 * `g:sw_search_default_regex`: whether to use regular expressions or not when
   performing a search; default value: "Y"
 * `g:sw_search_default_match_all`: whether to match or not all the search
@@ -1044,7 +1107,7 @@ and
 
 ## Sql buffer settings: 
 
-* `g:sw_sqlopen_command`: the vim command used by `SWSqlBufferConnect`
+* `g:sw_sqlopen_command`: the vim command used by `SWSqlConnectToServer`
   command to open a buffer; possible values: `e|tabnew`; default value: "e",
   which means open with vim `edit` command
 * `g:sw_tab_switches_between_bottom_panels`: if set to true, then clicking tab
@@ -1054,12 +1117,6 @@ and
 * `g:sw_switch_to_results_tab`: If true, then switch to the results buffer
   after executting a query
 * `g:sw_highlight_resultsets`: If true, highlight the resultsets headers
-* `g:sw_command_timer`: If true, then when launching a command, if it takes
-  more than one second, you will see a timer in the bottom left of the status
-  bar
-* `g:sw_log_to_file`: If true, then the logging of the communication between
-  `VIM` and `SQL Workbench/J` will be done in a file; otherwise, the logging
-  is done in memory
 
 ## Database explorer settings
 
@@ -1069,11 +1126,17 @@ and
 ## General settings:
 
 * `g:sw_exe`: the location of the `SQL Workbench` executable; default value:
-  "sqlwbconsole.sh"; you need to set it for the plugin to work
+  "sqlwbconsole.sh"
 * `g:sw_tmp`: the location of your temporary folder; default value: "/tmp"
+* `g:sw_asynchronious`: by default, the commands are executed synchronous; if
+  you set this to 1, then the commands will be executed asynchronous 
+* `g:sw_vim_exe`: the default VIM executable location; this is used in
+  conjunction with the asynchronous mode; default value: `vim`
 * `g:sw_delete_tmp`: if true, then delete the temporary files created to
   execute any command. Useful for debugging. You can set it to 0 and check all
   the generated files
+* `g:sw_use_old_sw`: if true, then use an older version of `SQL Workbench/J`
+  (prior to build 118)
 * `g:sw_save_resultsets`: if true, then all the resultsets will be saved,
   event if you close the resultsets window; to clear the resultsets window,
   use `SWSqlWipeoutResultsSets` command.
