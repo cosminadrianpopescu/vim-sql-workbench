@@ -841,7 +841,7 @@ function! sw#sqlwindow#execute_sql(sql)
         let title = title[:255] . '...'
     endif
     let _sql = '-- @wbresult ' . title . "\n" . _sql
-    if !exists('b:no_variables') && g:sw_use_old_sw
+    if !exists('b:no_variables')
         let vars = sw#variables#extract(_sql)
         if len(vars) > 0
             for var in vars
