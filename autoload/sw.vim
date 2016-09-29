@@ -82,12 +82,6 @@ if !exists('g:Sw_unique_id')
     let g:Sw_unique_id = 1
 endif
 
-if exists('v:servername') && exists('g:sw_vim_exe')
-	if v:servername != ''
-		let s:wake_vim_cmd = g:sw_vim_exe . ' --servername ' . v:servername
-	endif
-endif
-
 function! sw#find_buffer_by_unique_id(uid)
     for k in keys(g:sw_session)
         if has_key(g:sw_session[k], 'unique_id')
@@ -110,10 +104,6 @@ function! s:get_buff_unique_id()
     endif
 
     return -1
-endfunction
-
-function! s:get_wake_vim_cmd()
-	return s:wake_vim_cmd . ' --remote-expr "sw#got_async_result(' . s:get_buff_unique_id() . ')"'
 endfunction
 
 function! sw#set_on_async_result(value)
@@ -564,10 +554,11 @@ function! sw#put_text_in_buffer(text)
 endfunction
 
 function! sw#put_lines_in_buffer(lines)
+    let file = g:sw_tmp . "/row-" . sw#servername()
     setlocal modifiable
     normal ggdG
-    call writefile(a:lines, g:sw_tmp . "/row-" . v:servername)
-    execute "read " . g:sw_tmp . "/row-" . v:servername
+    call writefile(a:lines, file)
+    execute "read " . file
     normal ggdd
     setlocal nomodifiable
 endfunction
@@ -587,4 +578,8 @@ endfunction
 
 function! sw#get_pattern(which)
     return s:patterns[a:which]
+endfunction
+
+function! sw#servername()
+    return substitute(v:servername, '\v\/', '-', 'g')
 endfunction

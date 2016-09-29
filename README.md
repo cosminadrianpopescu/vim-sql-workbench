@@ -11,7 +11,7 @@ it, here is the quick start:
 
 *Running sql queries against a DBMS*:
 
-* set the `g:sw_config_dir` variable
+* set the `g:sw_config_dir` and `g:sw_exe` variables
 * open your sql buffer
 * if you have `CtrlP` installed you can do `CtrlP` and then select `SQL
   Workbench profiles` and choose your profile
@@ -318,6 +318,58 @@ You can also add a panel to an existing tab, using the
 * The command (this is the SQL command to be sent to the DBMS once this option
   is selected
 
+##Events
+
+The database explorer has events to which you can hook a function to be
+executed before the command is executed or after the result is received. If
+you hook to the before event, your function will receive as a parameter the
+command being set to a server and it must return the modified command. If you
+hoon to the after event, your function will receive the response from the
+server (an array of lines) and can modify it. It has to return the result
+which will be displayed in the left or right panel (a new list of lines). 
+
+To hook on the tab events, you can use the function
+`sw#dbexplorer#add_tab_event`. The arguments are:
+
+* the shortcut of the tab
+* the event type (`after` or `before`)
+* the function name
+
+*Example:*
+
+```
+function! BeforeTabObjects(command)
+    return "show tables"
+endfunction
+
+function! AfterTabObjects(result)
+    let result = []
+    for line in a:result
+        call add(result, substitute(line, '\v^TABLE_NAME[ \s\t]*$', 'Tables', 'g'))
+    endfor
+    return  result
+endfunction
+
+call sw#dbexplorer#add_tab_event('O', 'before', 'BeforeTabObjects')
+call sw#dbexplorer#add_tab_event('O', 'after', 'AfterTabObjects')
+```
+
+After executing this example, when you select the Objects tab in the database
+explorer, the command executed is going to be `show tables`, instead of
+`WbList`, which is the default for objects. Then, when the result is returned,
+the line `TABLE_NAME` is going to be replaces with the text "Tables". 
+
+To hook on panel events, you can use the function
+`sw#dbexplorer#add_panel_event`. The arguments are:
+
+* the shortcut of the tab
+* the shortcut of the panel
+* the type of event (`after` or `before`)
+* the function name
+
+For an example on how to use this function, see the `resources/dbexplorer.vim`
+file (the last line) and the `autoload/sw/dbexplorer.vim` file to see the
+function hook definition.
 
 The SQL buffer
 ========================================

@@ -158,33 +158,36 @@ else
     execute "so " . g:sw_dbexplorer_panel
 endif
 
-for _profile in items(g:extra_sw_tabs)
-    let profile = _profile[0]
-    let tabs = _profile[1]
-    if (!has_key(g:SW_Tabs, profile))
-        let g:SW_Tabs[profile] = []
-    endif
-    for tab in tabs
-        call add(g:SW_Tabs[profile], tab)
+if exists('g:extra_sw_tabs')
+    for _profile in items(g:extra_sw_tabs)
+        let profile = _profile[0]
+        let tabs = _profile[1]
+        if (!has_key(g:SW_Tabs, profile))
+            let g:SW_Tabs[profile] = []
+        endif
+        for tab in tabs
+            call add(g:SW_Tabs[profile], tab)
+        endfor
     endfor
-endfor
+endif
 
-for key in keys(g:SW_Tabs)
-    let tabs = g:SW_Tabs[key]
+if exists('g:extra_sw_panels')
+    for key in keys(g:SW_Tabs)
+        let tabs = g:SW_Tabs[key]
 
-    for tab in tabs
-        for shortcut in keys(g:extra_sw_panels)
-            let panels = g:extra_sw_panels[shortcut]
+        for tab in tabs
+            for shortcut in keys(g:extra_sw_panels)
+                let panels = g:extra_sw_panels[shortcut]
 
-            for panel in panels
-                if tab['shortcut'] == shortcut && key == panel['profile']
-                    call add(tab['panels'], panel['panel'])
-                endif
+                for panel in panels
+                    if tab['shortcut'] == shortcut && key == panel['profile']
+                        call add(tab['panels'], panel['panel'])
+                    endif
+                endfor
             endfor
         endfor
     endfor
-
-endfor
+endif
 
 command! -nargs=+ -complete=customlist,sw#autocomplete_profile SWDbExplorer call sw#dbexplorer#show_panel(<f-args>)
 command! -nargs=? SWDbExplorerClose call sw#dbexplorer#hide_panel(<f-args>)

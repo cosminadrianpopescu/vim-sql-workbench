@@ -110,7 +110,7 @@ endfunction
 function! sw#search#do(command)
     echomsg "Searching. Please wait..."
 	call sw#session#init_section()
-    call sw#execute_sql(a:command . ';')
+    call sw#server#execute_sql(a:command . ';')
 endfunction
 
 function! sw#search#data_defaults(value)

@@ -18,16 +18,18 @@
 "============================================================================"
 
 let s:current_file = expand('<sfile>:p:h')
+let s:nvim = has("nvim")
 let s:channel_handlers = {}
 let s:pattern_prompt_begin = '\v^([a-zA-Z_0-9\.]+(\@[a-zA-Z_0-9\/\-]+)*\>[ \s\t]*)+'
 let s:pattern_prompt = s:pattern_prompt_begin . '$'
 let s:pattern_wait_input = '\v^([a-zA-Z_][a-zA-Z0-9_]*( \[[^\]]+\])?: |([^\>]+\> )?([^\>]+\> )*Username|([^\>]+\> )*Password: |([^\>]+\>[ ]+)?Do you want to run the command UPDATE\? \(Yes\/No\/All\)[ ]+)$'
+let s:params_history = []
 let s:pattern_new_connection = '\v^Connection to "([^"]+)" successful$'
-let s:timer = {'id': '', 'sec' : 0}
+let s:timer = {'id': -1, 'sec' : 0}
 
 function! s:log_init(channel)
     if g:sw_log_to_file
-        let s:channel_handlers[a:channel].log = g:sw_tmp . '/' . v:servername . '-' . substitute(fnamemodify(bufname('%'), ':t'), '\.', '-', 'g')
+        let s:channel_handlers[a:channel].log = g:sw_tmp . '/' . sw#servername() . '-' . substitute(fnamemodify(bufname('%'), ':t'), '\.', '-', 'g')
     else
         let s:channel_handlers[a:channel].log = ''
     endif
@@ -47,6 +49,17 @@ function! sw#server#channel_log(channel)
     return s:channel_handlers[a:channel].log
 endfunction
 
+function! sw#server#nvim_handle_message(job, lines, ev)
+    if a:ev == 'stdout'
+        let msg = ''
+        for line in a:lines
+            let msg .= (msg == '' ? '' : "\n") . line
+        endfor
+
+        call sw#server#handle_message(a:job, msg)
+    endif
+endfunction
+
 function! sw#server#handle_message(channel, msg)
     call s:log_channel(a:channel, a:msg)
     let lines = split(substitute(a:msg, "\r", "", 'g'), "\n")
@@ -60,8 +73,13 @@ function! sw#server#handle_message(channel, msg)
             let got_prompt = 1
         endif
         if line =~ s:pattern_wait_input && !(line =~ '\v^Catalog: $') && !(line =~ '\v^Schema: $')
-            let value = input('SQL Workbench/J is asking for input for ' . line . ' ', 'abc')
-            call ch_sendraw(b:sw_channel, value . "\n")
+            let value = input('SQL Workbench/J is asking for input for ' . line . ' ', '')
+            call add(s:params_history, {'prompt': line, 'value': value})
+            if s:nvim
+                call jobsend(b:sw_channel, value . "\n")
+            else
+                call ch_sendraw(b:sw_channel, value . "\n")
+            endif
         endif
 
         if line =~ s:pattern_new_connection 
@@ -89,13 +107,21 @@ function! sw#server#handle_message(channel, msg)
 endfunction
 
 function! s:start_sqlwb(type)
-    let job = job_start(g:sw_exe . ' -feedback=true -showProgress=false -abortOnError=false -showTiming=true', {'in_mode': 'raw', 'out_mode': 'raw'})
-    let channel = job_getchannel(job)
-    call ch_setoptions(channel, {'callback': 'sw#server#handle_message'})
+    let cmd = g:sw_exe . ' -feedback=true -showProgress=false -abortOnError=false -showTiming=true'
+    if !s:nvim
+        let job = job_start(cmd, {'in_mode': 'raw', 'out_mode': 'raw'})
+        let channel = job_getchannel(job)
+        call ch_setoptions(channel, {'callback': 'sw#server#handle_message'})
+    else
+        let channel = jobstart(cmd, {'on_stdout': function('sw#server#nvim_handle_message'), 'on_stderr': function('sw#server#nvim_handle_message'), 'on_exit': function('sw#server#nvim_handle_message')})
+    endif
+
     let s:channel_handlers[channel] = {'text': '', 'type': a:type, 'buffer': fnamemodify(bufname('%'), ':p'), 'current_url': '', 'tmp_handler': ''}
     call s:log_init(channel)
 
     return channel
+
+    ""return job
 endfunction
 
 function! sw#server#connect_buffer(...)
@@ -130,17 +156,23 @@ function! sw#server#execute_sql(sql, ...)
     elseif a:0 >= 1
         let channel = a:1
     endif
-    if ch_status(channel) != 'open'
-        call sw#display_error("The channel is not open. This means that SQL Workbench/J instance for this answer does not responsd anymore. Please do again SWSqlBufferConnect")
-        unlet b:sw_channel
-        return ''
+    if !s:nvim
+        if ch_status(channel) != 'open'
+            call sw#display_error("The channel is not open. This means that SQL Workbench/J instance for this answer does not responsd anymore. Please do again SWSqlBufferConnect")
+            unlet b:sw_channel
+            return ''
+        endif
     endif
     let text = a:sql . "\n"
     call s:log_channel(channel, text)
     if callback != ''
         let s:channel_handlers[channel].tmp_handler = callback
     endif
-    call ch_sendraw(channel, text)
+    if s:nvim
+        call jobsend(channel, text)
+    else
+        call ch_sendraw(channel, text)
+    endif
     if g:sw_command_timer
         call s:init_timer()
         let s:timer.id = timer_start(1000, 'sw#server#timer', {'repeat': -1})
@@ -148,10 +180,10 @@ function! sw#server#execute_sql(sql, ...)
 endfunction
 
 function! s:init_timer()
-    if s:timer.id != ''
+    if s:timer.id != -1
         call timer_stop(s:timer.id)
     endif
-    let s:timer = {'id': '', 'sec': 0}
+    let s:timer = {'id': -1, 'sec': 0}
 endfunction
 
 function! sw#server#timer(timer)
@@ -207,4 +239,8 @@ function! sw#server#open_dbexplorer(profile)
     call sw#server#execute_sql(command, channel)
 
     return channel
+endfunction
+
+function! sw#server#get_parameters_history()
+    return s:params_history
 endfunction

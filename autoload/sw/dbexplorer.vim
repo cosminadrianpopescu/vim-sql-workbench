@@ -22,6 +22,7 @@ if !exists('g:SW_Tabs')
 endif
 
 let s:profiles = {}
+let s:events = {'panels': {'before': {}, 'after': {}}, 'tabs': {'before': {}, 'after': {}}}
 let s:last_command = {}
 
 " Local functions{{{1
@@ -189,8 +190,9 @@ endfunction
 
 " Change a tab{{{2
 function! sw#dbexplorer#change_tab(command, shortcut, title)
-    let s:last_command = {'command': a:command, 'shortcut': a:shortcut, 'title': a:title, 'type': 1}
-    call sw#dbexplorer#do_command(a:command)
+    let command = s:process_events('tabs', 'before', a:shortcut, '', a:command)
+    let s:last_command = {'command': command, 'shortcut': a:shortcut, 'title': a:title, 'type': 1}
+    call sw#dbexplorer#do_command(command)
 endfunction
 
 function! sw#dbexplorer#do_command(sql)
@@ -254,11 +256,6 @@ function! s:process_result_2(result, tab_shortcut, shortcut, cmd)
     call sw#session#set_buffer_variable('last_cmd', a:cmd)
     call sw#session#set_buffer_variable('state', 'resultsets')
     call sw#put_lines_in_buffer(result)
-    let pattern = '\v^.*-- AFTER(.*)$'
-    if a:cmd =~ pattern
-        let after = substitute(a:cmd, pattern, '\1', 'g')
-        execute after
-    endif
 endfunction
 
 function! s:get_object_columns()
@@ -275,18 +272,14 @@ endfunction
 function! s:change_panel(command, shortcut, title, tab_shortcut)
     echomsg "Processing request..."
 
-    let pattern = '\v\c^\/\* BEFORE (.*)\*\/.+$'
-    if (a:command =~ pattern)
-        let command = substitute(a:command, pattern, '\1', 'g')
-        execute command
-    endif
+    let command = s:process_events('panels', 'before', a:tab_shortcut, a:shortcut, a:command)
     if (exists('b:selected_row'))
         call matchdelete(b:selected_row)
     endif
     let object = substitute(getline('.'), '\v^([^ ]+) .*$', '\1', 'g')
     call sw#session#set_buffer_variable('selected_row', matchadd('SWSelectedObject', '^' . object . ' .*$'))
     let columns = s:get_object_columns()
-    let cmd = substitute(a:command, '\v\%object\%', object, 'g')
+    let cmd = substitute(command, '\v\%object\%', object, 'g')
     let i = 0
     for column in columns
         let cmd = substitute(cmd, '\v\%' . i . '\%', column, 'g')
@@ -406,20 +399,36 @@ endfunction
 
 function! s:set_highlights()
     highlight SWHighlights term=NONE cterm=NONE ctermbg=25 ctermfg=yellow gui=NONE guibg=#808080 guifg=yellow
-    highlight SWSelectedObject term=NONE cterm=NONE ctermbg=DarkGrey ctermfg=fg gui=NONE guibg=#808080 guifg=yellow
+    highlight SWSelectedObject term=NONE cterm=NONE ctermbg=DarkGrey ctermfg=NONE gui=NONE guibg=#808080 guifg=yellow
     let id = matchadd('SWHighlights', b:profile)
     let id = matchadd('SWHighlights', b:t1_shortcuts)
     let id = matchadd('SWHighlights', b:t2_shortcuts)
     let id = matchadd('SWHighlights', b:t3_shortcuts)
 endfunction
 
+function! s:process_events(which, when, tab_shortcut, shortcut, result)
+    let result = a:result
+    if has_key(s:events[a:which][a:when], a:tab_shortcut . a:shortcut)
+        for command in s:events[a:which][a:when][a:tab_shortcut . a:shortcut]
+            let Callback = function(command)
+            let result = Callback(result)
+        endfor
+    endif
+
+    return result
+endfunction
+
 " Handles a message from the server{{{2
 function! sw#dbexplorer#message_handler(channel, message)
     let result = split(a:message, "\n")
     if s:last_command.type == 1
+        let result = s:process_events('tabs', 'after', s:last_command.shortcut, '', result)
         call s:process_result_1(result, s:last_command.shortcut, s:last_command.title)
     elseif s:last_command.type == 2
+        let result = s:process_events('panels', 'after', s:last_command.tab_shortcut, s:last_command.shortcut, result)
         call s:process_result_2(result, s:last_command.tab_shortcut, s:last_command.shortcut, s:last_command.cmd)
+    elseif s:last_command.type == 3
+        call s:process_result_1(result, '', '')
     endif
 endfunction
 
@@ -439,6 +448,7 @@ function! sw#dbexplorer#show_panel(profile)
     let uid = sw#generate_unique_id()
     execute "badd " . name
     execute "buffer " . name
+    let s:last_command = {'type': 3}
     let channel = sw#server#open_dbexplorer(a:profile)
     call s:set_special_buffer(profile, channel)
     call sw#session#set_buffer_variable('unique_id', uid)
@@ -455,7 +465,7 @@ function! sw#dbexplorer#show_panel(profile)
     call sw#session#set_buffer_variable('unique_id', uid)
     vertical resize 60
     call s:iterate('s:get_first_tab')
-    call sw#dbexplorer#change_tab(b:first_tab['command'], b:first_tab['shortcut'], b:first_tab['title'])
+    ""call sw#dbexplorer#change_tab(b:first_tab['command'], b:first_tab['shortcut'], b:first_tab['title'])
     if s_below
         set splitbelow
     endif
@@ -467,10 +477,45 @@ function! sw#dbexplorer#is_db_explorer_tab()
     return name =~ '\v^__Info__' || name =~ '\v^__DBExplorer__' || name =~ '\v^__SQL__'
 endfunction
 
-" Eliminates the first column of the buffer for the source code{{{2
-function! sw#dbexplorer#fix_source_code()
-    setlocal modifiable
-    normal gg0G0x
-    setlocal nomodifiable
+function! s:add_event(which, tab_shortcut, shortcut, when, command)
+    if !has_key(s:events[a:which][a:when], a:tab_shortcut . a:shortcut)
+        let s:events[a:which][a:when][a:tab_shortcut . a:shortcut] = []
+    endif
+    call add(s:events[a:which][a:when][a:tab_shortcut . a:shortcut], a:command)
 endfunction
+
+function! sw#dbexplorer#add_tab_event(shortcut, when, command)
+    call s:add_event('tabs', a:shortcut, '', a:when, a:command)
+endfunction
+
+function! sw#dbexplorer#add_panel_event(tab_shortcut, shortcut, when, command)
+    call s:add_event('panels', a:tab_shortcut, a:shortcut, a:when, a:command)
+endfunction
+
+function! sw#dbexplorer#get_events()
+    return s:events
+endfunction
+
+function! sw#dbexplorer#filtered_data(result)
+    let params = reverse(copy(sw#server#get_parameters_history()))
+    let value = ''
+
+    for param in params
+        if param.prompt =~ '\v^filter'
+            let value = param.value
+            break
+        endif
+    endfor
+
+    let result = ['Filter value: ' . value]
+
+    for line in a:result
+        if !(line =~ '\vPlease supply a value for the following variables|filter')
+            call add(result, line)
+        endif
+    endfor
+
+    return result
+endfunction
+
 " vim:fdm=marker

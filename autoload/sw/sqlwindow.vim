@@ -586,6 +586,7 @@ endfunction
 
 function! s:print_line(line_idx, n_resultset, do_filter)
     let resultset = b:resultsets[a:n_resultset]
+    let pattern_empty_line = '\v^[ \t\s\|\:]*$'
 
     let line = resultset.lines[a:line_idx]
 
@@ -639,7 +640,7 @@ function! s:print_line(line_idx, n_resultset, do_filter)
         let i += 1
     endwhile
 
-    if result == ''
+    if result =~ pattern_empty_line
         let result = '#IGNORE#'
     endif
     return substitute(result, '\v^(.*)[+|]$', '\1', 'g')
@@ -841,18 +842,6 @@ function! sw#sqlwindow#execute_sql(sql)
         let title = title[:255] . '...'
     endif
     let _sql = '-- @wbresult ' . title . "\n" . _sql
-    if !exists('b:no_variables')
-        let vars = sw#variables#extract(_sql)
-        if len(vars) > 0
-            for var in vars
-                let value = sw#variables#get(var)
-                if value != ''
-                    let _sql = w:auto_added1 . 'wbvardef ' . var . ' = ' . value . "\n" . b:delimiter . "\n" . w:auto_added2 . _sql
-                endif
-            endfor
-            let _sql = substitute(_sql, g:parameters_pattern, g:sw_p_prefix . '\1' . g:sw_p_suffix, 'g')
-        endif
-    endif
     call s:do_execute_sql(_sql)
 endfunction
 
