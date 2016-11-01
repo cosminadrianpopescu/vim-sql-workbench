@@ -750,7 +750,12 @@ function! s:display_resultsets(continous)
 endfunction
 
 function! s:add_new_resultset(channel, id)
-    call add(b:resultsets, {'messages': [], 'lines': [], 'hidden_columns': [], 'resultset_start': 0, 'header': [], 'filters': {}, 'title': '', 'rows': 0, 'channel': a:channel, 'sql': g:sw_last_sql_query, 'id': a:id})
+    if exists('g:sw_last_sql_query')
+        let query = g:sw_last_sql_query
+    else
+        let query = ''
+    endif
+    call add(b:resultsets, {'messages': [], 'lines': [], 'hidden_columns': [], 'resultset_start': 0, 'header': [], 'filters': {}, 'title': '', 'rows': 0, 'channel': a:channel, 'sql': query, 'id': a:id})
 endfunction
 
 function! s:process_result(channel, result)
