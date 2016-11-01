@@ -150,6 +150,12 @@ function! s:start_sqlwb(type)
     let vid = substitute(v:servername, '\v\/', '-', 'g') . sw#generate_unique_id()
     let cmd = [g:sw_exe, '-feedback=true', '-showProgress=false', '-showTiming=true', '-nosettings', '-variable=vid=' . vid]
     if !s:nvim
+        if !filereadable(g:sw_exe)
+            echom g:sw_exe . " is not readable. Make sure the setting g:sw_exe is set and the file exists."
+        endif
+        if match(getfperm(g:sw_exe), "r.x.*") ==# -1
+            echom g:sw_exe . " is not executable. Make sure the permissions are set correctly."
+        endif
         let job = job_start(cmd, {'in_mode': 'raw', 'out_mode': 'raw'})
         let pid = substitute(job, '\v^process ([0-9]+).*$', '\1', 'g')
         let pid = ''
