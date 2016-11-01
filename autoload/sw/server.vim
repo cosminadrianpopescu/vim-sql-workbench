@@ -109,6 +109,12 @@ endfunction
 function! s:start_sqlwb(type)
     let cmd = g:sw_exe . ' -feedback=true -showProgress=false -abortOnError=false -showTiming=true'
     if !s:nvim
+        if !filereadable(g:sw_exe)
+            echom g:sw_exe . " is not readable. Make sure the setting g:sw_exe is set and the file exists."
+        endif
+        if match(getfperm(g:sw_exe), "r.x.*") ==# -1
+            echom g:sw_exe . " is not executable. Make sure the permissions are set correctly."
+        endif
         let job = job_start(cmd, {'in_mode': 'raw', 'out_mode': 'raw'})
         let channel = job_getchannel(job)
         call ch_setoptions(channel, {'callback': 'sw#server#handle_message'})
