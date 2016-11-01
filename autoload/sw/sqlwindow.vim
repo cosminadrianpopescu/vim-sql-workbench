@@ -749,8 +749,8 @@ function! s:display_resultsets(continous)
     endif
 endfunction
 
-function! s:add_new_resultset(channel)
-    call add(b:resultsets, {'messages': [], 'lines': [], 'hidden_columns': [], 'resultset_start': 0, 'header': [], 'filters': {}, 'title': '', 'rows': 0, 'channel': a:channel})
+function! s:add_new_resultset(channel, id)
+    call add(b:resultsets, {'messages': [], 'lines': [], 'hidden_columns': [], 'resultset_start': 0, 'header': [], 'filters': {}, 'title': '', 'rows': 0, 'channel': a:channel, 'sql': g:sw_last_sql_query, 'id': a:id})
 endfunction
 
 function! s:process_result(channel, result)
@@ -770,14 +770,15 @@ function! s:process_result(channel, result)
 
     let i = 0
     let mode = 'message'
-    call s:add_new_resultset(a:channel)
+    let resultset_id = sw#generate_unique_id()
+    call s:add_new_resultset(a:channel, resultset_id)
     let n = len(b:resultsets) - 1
     while i < len(lines)
         if i + 1 < len(lines) && lines[i + 1] =~ sw#get_pattern('pattern_resultset_start')
             "" If we have more than one resultset in a go.
             if len(b:resultsets[n].lines) > 0
                 let n += 1
-                call s:add_new_resultset(a:channel)
+                call s:add_new_resultset(a:channel, resultset_id)
             endif
             let mode = 'resultset'
             let b:resultsets[n].resultset_start = len(b:resultsets[n].lines)

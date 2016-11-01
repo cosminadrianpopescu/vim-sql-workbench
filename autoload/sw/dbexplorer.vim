@@ -24,6 +24,9 @@ endif
 let s:profiles = {}
 let s:events = {'panels': {'before': {}, 'after': {}}, 'tabs': {'before': {}, 'after': {}}}
 let s:last_command = {}
+let s:cache = {}
+let s:cache_filter = "!(v:val =~ '\\v^Execution time')"
+let s:cache_message = 'Execution time (from cache)'
 
 " Local functions{{{1
 " Iterates in the tabs array{{{2
@@ -188,11 +191,39 @@ function! s:process_result_1(result, shortcut, title)
     endif
 endfunction 
 
+function! s:add_to_cache(shortcut, lines)
+    if !has_key(s:cache, b:profile)
+        let s:cache[b:profile] = {}
+    endif
+    let s:cache[b:profile][a:shortcut] = filter(copy(a:lines), s:cache_filter)
+endfunction
+
+function! s:get_from_cache(shortcut)
+    if !has_key(s:cache, b:profile) || !has_key(s:cache[b:profile], a:shortcut)
+        return []
+    endif
+
+    return s:cache[b:profile][a:shortcut]
+endfunction
+
+function! s:is_in_cache(shortcut, lines)
+    let f = 'v:val != "" && v:val != "' . s:cache_message . '"'
+    return filter(copy(s:get_from_cache(a:shortcut)), f) == filter(copy(filter(copy(a:lines), s:cache_filter)), f)
+endfunction
+
 " Change a tab{{{2
 function! sw#dbexplorer#change_tab(command, shortcut, title)
     let command = s:process_events('tabs', 'before', a:shortcut, '', a:command)
     let s:last_command = {'command': command, 'shortcut': a:shortcut, 'title': a:title, 'type': 1}
+    if len(s:get_from_cache(a:shortcut)) > 0
+        let arr = copy(s:get_from_cache(a:shortcut))
+        call s:process_result_1(add(arr, s:cache_message), a:shortcut, a:title)
+    endif
     call sw#dbexplorer#do_command(command)
+endfunction
+
+function! sw#dbexplorer#tmp()
+    return s:cache
 endfunction
 
 function! sw#dbexplorer#do_command(sql)
@@ -285,7 +316,12 @@ function! s:change_panel(command, shortcut, title, tab_shortcut)
         let cmd = substitute(cmd, '\v\%' . i . '\%', column, 'g')
         let i = i + 1
     endfor
-    let s:last_command = {'tab_shortcut': a:tab_shortcut, 'shortcut': a:shortcut, 'cmd': cmd, 'type': 2}
+    let s:last_command = {'tab_shortcut': a:tab_shortcut, 'shortcut': a:shortcut, 'cmd': cmd, 'type': 2, 'object': object}
+
+    if len(s:get_from_cache(a:tab_shortcut . object . a:shortcut)) > 0
+        let arr = copy(s:get_from_cache(a:tab_shortcut . object . a:shortcut))
+        call s:process_result_2(add(arr, s:cache_message), a:tab_shortcut, a:shortcut, cmd)
+    endif
     call sw#dbexplorer#do_command(cmd)
 endfunction
 
@@ -418,15 +454,36 @@ function! s:process_events(which, when, tab_shortcut, shortcut, result)
     return result
 endfunction
 
+function! s:check_cache(shortcut, result)
+    if s:is_in_cache(a:shortcut, a:result)
+        return 1
+    endif
+
+    call s:add_to_cache(a:shortcut, a:result)
+
+    return 0
+endfunction
+
 " Handles a message from the server{{{2
 function! sw#dbexplorer#message_handler(channel, message)
     let result = split(a:message, "\n")
+    if has_key(s:last_command, 'shortcut')
+        let shortcut = s:last_command.shortcut
+        if has_key(s:last_command, 'tab_shortcut') && has_key(s:last_command, 'object')
+            let shortcut = s:last_command.tab_shortcut . s:last_command.object . shortcut
+        endif
+    endif
+
     if s:last_command.type == 1
         let result = s:process_events('tabs', 'after', s:last_command.shortcut, '', result)
-        call s:process_result_1(result, s:last_command.shortcut, s:last_command.title)
+        if !s:check_cache(shortcut, result)
+            call s:process_result_1(result, s:last_command.shortcut, s:last_command.title)
+        endif
     elseif s:last_command.type == 2
         let result = s:process_events('panels', 'after', s:last_command.tab_shortcut, s:last_command.shortcut, result)
-        call s:process_result_2(result, s:last_command.tab_shortcut, s:last_command.shortcut, s:last_command.cmd)
+        if !s:check_cache(shortcut, result)
+            call s:process_result_2(result, s:last_command.tab_shortcut, s:last_command.shortcut, s:last_command.cmd)
+        endif
     elseif s:last_command.type == 3
         call s:process_result_1(result, '', '')
     endif
@@ -516,6 +573,37 @@ function! sw#dbexplorer#filtered_data(result)
     endfor
 
     return result
+endfunction
+
+function! sw#dbexplorer#fold_columns(result)
+    let name = bufname('%')
+    call sw#goto_window('__SQL__-' . b:profile)
+
+    setlocal foldmethod=expr
+    setlocal foldexpr=sw#dbexplorer#do_fold_columns(v:lnum)
+    normal zR
+
+    return a:result
+endfunction
+
+function! sw#dbexplorer#do_fold_columns(lnum)
+    if (a:lnum == 1)
+        let b:fold_level = 0
+    endif
+    if getline(a:lnum) =~ '\v^---- '
+        let b:fold_level += 1
+        return '>' . b:fold_level
+    endif
+    if getline(a:lnum) =~ '\v^[ \s\t\n\r]*$'
+        let result = '<' . b:fold_level
+        let b:fold_level -= 1
+        if b:fold_level < 0
+            let b:fold_level = 0
+        endif
+        return result
+    endif
+
+    return -1
 endfunction
 
 " vim:fdm=marker

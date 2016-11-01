@@ -38,3 +38,4 @@ let oracle_sequences = {'title': 'Sequences', 'shortcut': 'Q', 'command': 'wblis
 let g:SW_Tabs[':oracle'] = [oracle_dblinks, oracle_jobs, oracle_packages, oracle_schemas, oracle_sequences]
 
 call sw#dbexplorer#add_panel_event('O', 'F', 'after', 'sw#dbexplorer#filtered_data')
+call sw#dbexplorer#add_panel_event('O', 'C', 'after', 'sw#dbexplorer#fold_columns')
