@@ -82,6 +82,10 @@ if !exists('g:Sw_unique_id')
     let g:Sw_unique_id = 1
 endif
 
+if exists('g:sw_config_dir') && !(g:sw_config_dir =~ '\v\/$')
+    let g:sw_config_dir .= '/'
+endif
+
 function! sw#find_buffer_by_unique_id(uid)
     for k in keys(g:sw_session)
         if has_key(g:sw_session[k], 'unique_id')

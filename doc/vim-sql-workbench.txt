@@ -1093,6 +1093,18 @@ SWSQLSHOWLASTRESULTSET                  *vim-sql-workbench-swsqlshowlastresultse
 This command will re-open the resultsets window without sending a new command
 to the DBMS.
 
+--------------------------------------------------------------------------------
+SWSQLDELETERESULTSET                      *vim-sql-workbench-swsqldeleteresultset*
+
+This command will delete the currently selected resultset from the resultsets
+window.
+
+--------------------------------------------------------------------------------
+SWSQLREFRESHRESULTSET                    *vim-sql-workbench-swsqlrefreshresultset*
+
+This command will refresh the currently selected resultset from the resultsets
+window.
+
 ================================================================================
 SETTINGS                                              *vim-sql-workbench-settings*
 
@@ -1177,11 +1189,6 @@ GENERAL SETTINGS:                            *vim-sql-workbench-general_settings
 *   `g:sw_save_resultsets`: if true, then all the resultsets will be saved,
     event if you close the resultsets window; to clear the resultsets window,
     use `SWSqlWipeoutResultsSets` command.
-
-
-
-
-
-
-
+*   `g:sw_config_dir`: the config dir of the  (works only with
+    build 121.4 and more)
 

@@ -198,6 +198,8 @@ command! -nargs=* -complete=file SWSqlBufferDisconnect call sw#server#disconnect
 command! SWSqlExecuteCurrent call sw#sqlwindow#execute_sql(sw#sqlwindow#extract_current_sql())
 command! SWSqlExecuteSelected call sw#sqlwindow#execute_sql(sw#sqlwindow#extract_selected_sql())
 command! SWSqlExecuteAll call sw#sqlwindow#execute_sql(sw#sqlwindow#extract_all_sql())
+command! SWSqlRefreshResultSet call sw#sqlwindow#refresh_resultset()
+command! SWSqlDeleteResultSet call sw#sqlwindow#delete_resultset()
 command! -nargs=0 SWSqlGetSqlCount call sw#sqlwindow#get_count(sw#sqlwindow#extract_current_sql())
 command! -nargs=0 SWSqlGetObjRows call sw#sqlwindow#get_count(expand('<cword>'))
 command! -nargs=0 SWSqlShowActiveConnections echo sw#server#get_active_connections()

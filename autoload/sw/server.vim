@@ -150,6 +150,10 @@ function! s:start_sqlwb(type)
     let vid = substitute(v:servername, '\v\/', '-', 'g') . sw#generate_unique_id()
     let cmd = [g:sw_exe, '-feedback=true', '-showProgress=false', '-showTiming=true', '-nosettings', '-variable=vid=' . vid]
 
+    if exists('g:sw_config_dir')
+        call add(cmd, '-configDir=' . g:sw_config_dir)
+    endif
+
     let valid_exe = 1
     if !filereadable(g:sw_exe)
         echom g:sw_exe . " is not readable. Make sure the setting g:sw_exe is set and the file exists."

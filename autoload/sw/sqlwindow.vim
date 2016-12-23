@@ -546,6 +546,7 @@ function! s:open_resultset_window()
         call sw#session#init_section()
         call sw#set_special_buffer()
         call sw#sqlwindow#set_results_shortcuts()
+        execute "autocmd! BufLeave " . bufname('%') . " let b:position = getcurpos()"
         if !s_below
             set nosplitbelow
         endif
@@ -739,13 +740,16 @@ function! s:display_resultsets(continous)
         setlocal foldmethod=expr
         setlocal foldexpr=sw#sqlwindow#folding(v:lnum)
         ""normal zMggjza
-        normal zR
+        ""normal zR
     else
         call s:display_resultsets_separate()
     endif
 
-    if (exists('b:position') && b:state == 'resultsets')
+    if (exists('b:position') && b:state == 'resultsets' && !s:new_resultset)
         call setpos('.', b:position)
+        normal zv
+    elseif b:state == 'messages' || s:new_resultset
+        normal zMzv
     endif
 endfunction
 
@@ -755,7 +759,27 @@ function! s:add_new_resultset(channel, id)
     else
         let query = ''
     endif
-    call add(b:resultsets, {'messages': [], 'lines': [], 'hidden_columns': [], 'resultset_start': 0, 'header': [], 'filters': {}, 'title': '', 'rows': 0, 'channel': a:channel, 'sql': query, 'id': a:id})
+    let n = s:get_next_resultset()
+    let result = {'messages': [], 'lines': [], 'hidden_columns': [], 'resultset_start': 0, 'header': [], 'filters': {}, 'title': '', 'rows': 0, 'channel': a:channel, 'sql': query, 'id': a:id, 'wait_refresh': 0}
+    if n == len(b:resultsets)
+        call add(b:resultsets, result)
+        let s:new_resultset = 1
+    else
+        let s:new_resultset = 0
+        let b:resultsets[n] = result
+    endif
+
+    return n
+endfunction
+
+function! s:get_next_resultset()
+    for i in range(len(b:resultsets))
+        if b:resultsets[i]['wait_refresh'] && b:resultsets[i]['sql'] == g:sw_last_sql_query
+            return i
+        endif
+    endfor
+
+    return len(b:resultsets)
 endfunction
 
 function! s:process_result(channel, result)
@@ -776,14 +800,12 @@ function! s:process_result(channel, result)
     let i = 0
     let mode = 'message'
     let resultset_id = sw#generate_unique_id()
-    call s:add_new_resultset(a:channel, resultset_id)
-    let n = len(b:resultsets) - 1
+    let n = s:add_new_resultset(a:channel, resultset_id)
     while i < len(lines)
         if i + 1 < len(lines) && lines[i + 1] =~ sw#get_pattern('pattern_resultset_start')
             "" If we have more than one resultset in a go.
             if len(b:resultsets[n].lines) > 0
-                let n += 1
-                call s:add_new_resultset(a:channel, resultset_id)
+                let n = s:add_new_resultset(a:channel, resultset_id)
             endif
             let mode = 'resultset'
             let b:resultsets[n].resultset_start = len(b:resultsets[n].lines)
@@ -960,7 +982,7 @@ function! s:filter_resultsets(idx, val)
     return exists('b:sw_channel') ? a:val['channel'] != b:sw_channel : a:val['channel'] != b:current_channel
 endfunction
 
-function sw#sqlwindow#wipeout_resultsets(all)
+function! sw#sqlwindow#wipeout_resultsets(all)
     if a:all
         let g:sw_last_resultset = []
     elseif exists('b:sw_channel') || exists('b:current_channel')
@@ -980,4 +1002,42 @@ function! sw#sqlwindow#get_count(statement)
         let sql = "select count(*) from (" . sw#ensure_sql_not_delimited(a:statement, ';') . ") t" . ';'
     endif
     call sw#sqlwindow#execute_sql(sql)
+endfunction
+
+function! sw#sqlwindow#refresh_resultset()
+    let n = s:get_n_resultset()
+    let sql = b:resultsets[n]['sql']
+    let channel = b:resultsets[n]['channel']
+    let file = ''
+    for info in getbufinfo()
+        if getbufvar(info['bufnr'], 'sw_channel') == channel
+            let file = info['name']
+            break
+        endif
+    endfor
+    if file != ''
+        let id = b:resultsets[n]['id']
+        for resultset in b:resultsets
+            if resultset['id'] == id
+                let resultset['wait_refresh'] = 1
+            endif
+        endfor
+        call sw#goto_window(file)
+        if bufname('%') == sw#sqlwindow#get_resultset_name()
+            call sw#display_error("Could not identify the buffer for this resultset")
+            return
+        endif
+        call sw#execute_sql(sql)
+    endif
+endfunction
+
+function! s:delete_filter(idx, val)
+    return a:val['id'] != s:_id
+endfunction
+
+function! sw#sqlwindow#delete_resultset()
+    let n = s:get_n_resultset()
+    let s:_id = b:resultsets[n]['id']
+    call filter(b:resultsets, function('s:delete_filter'))
+    call s:display_resultsets(1)
 endfunction

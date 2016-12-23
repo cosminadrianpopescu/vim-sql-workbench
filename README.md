@@ -1050,6 +1050,16 @@ is performed is returned. Otherwise you will see the log.
 This command will re-open the resultsets window without sending a new command
 to the DBMS.
 
+## SWSqlDeleteResultSet
+
+This command will delete the currently selected resultset from the resultsets
+window.
+
+## SWSqlRefreshResultSet
+
+This command will refresh the currently selected resultset from the resultsets
+window.
+
 Settings
 ========================================
 
@@ -1129,6 +1139,8 @@ and
 * `g:sw_save_resultsets`: if true, then all the resultsets will be saved,
   event if you close the resultsets window; to clear the resultsets window,
   use `SWSqlWipeoutResultsSets` command.
+* `g:sw_config_dir`: the config dir of the `SQL Workbench/J` (works only with
+  build 121.4 and more)
 
 Screen shots
 ========================================
