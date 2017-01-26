@@ -858,18 +858,22 @@ function! s:do_execute_sql(sql)
 endfunction
 
 function! sw#sqlwindow#execute_sql(sql)
-    let w:auto_added1 = "-- auto\n"
-    let w:auto_added2 = "-- end auto\n"
-
-    if (!s:check_sql_buffer())
-        return 
-    endif
     let _sql = a:sql
-    let title = substitute(a:sql, '\v[\n\r]', ' ', 'g')
-    if strlen(title) > 255
-        let title = title[:255] . '...'
-    endif
+
+    if g:sw_sql_name_result_tab == 1
+
+        let w:auto_added1 = "-- auto\n"
+        let w:auto_added2 = "-- end auto\n"
+
+        if (!s:check_sql_buffer())
+            return 
+        endif
+        let title = substitute(a:sql, '\v[\n\r]', ' ', 'g')
+        if strlen(title) > 255
+            let title = title[:255] . '...'
+        endif
     let _sql = '-- @wbresult ' . title . "\n" . _sql
+    endif
     call s:do_execute_sql(_sql)
 endfunction
 

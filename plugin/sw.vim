@@ -145,6 +145,10 @@ if !exists('g:sw_command_timer')
     let g:sw_command_timer = 1
 endif
 
+if !exists('g:sw_sql_name_result_tab')
+    let g:sw_sql_name_result_tab = 1
+endif
+
 "if !exists('g:sw_overwrite_current_command')
 "    let g:sw_overwrite_current_command = 0
 "endif

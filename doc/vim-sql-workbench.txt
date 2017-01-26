@@ -1170,6 +1170,8 @@ SQL BUFFER SETTINGS:                      *vim-sql-workbench-sql_buffer_settings
 *   `g:sw_log_to_file`: If true, then the logging of the communication between
     `VIM` and  will be done in a file; otherwise, the logging
     is done in memory
+*   `g:sw_sql_name_result_tab`: If enable, rename the result tab using @wbresult;
+     default value: 1
 
 --------------------------------------------------------------------------------
 DATABASE EXPLORER SETTINGS          *vim-sql-workbench-database_explorer_settings*
