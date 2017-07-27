@@ -898,6 +898,9 @@ function! s:do_execute_sql(sql)
 endfunction
 
 function! s:add_title_to_sql(sql)
+    if g:sw_sql_name_result_tab != 1
+        return a:sql
+    endif
     let _sql = a:sql
     let title = substitute(a:sql, '\v[\n\r]', ' ', 'g')
     if strlen(title) > 255
@@ -914,6 +917,7 @@ function! sw#sqlwindow#execute_sql(sql)
         return 
     endif
     let _sql = s:add_title_to_sql(a:sql)
+
     call s:do_execute_sql(_sql)
 endfunction
 

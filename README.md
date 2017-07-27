@@ -1138,6 +1138,8 @@ and
 * `g:sw_log_to_file`: If true, then the logging of the communication between
   `VIM` and `SQL Workbench/J` will be done in a file; otherwise, the logging
   is done in memory
+* `g:sw_sql_name_result_tab`: If enable, rename the result tab using @wbresult;
+     default value: 1
 
 ## Database explorer settings
 
