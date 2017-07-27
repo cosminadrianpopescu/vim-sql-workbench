@@ -238,7 +238,11 @@ function! sw#server#execute_sql(sql, ...)
             return ''
         endif
     endif
-    let text = a:sql . "\n"
+    if (exists('g:sw_windows_codepage'))
+        let text = iconv(a:sql, &encoding, g:sw_windows_codepage) . "\n"
+    else
+        let text = a:sql . "\n"
+    endif
     call s:log_channel(channel, text)
     if callback != ''
         let s:channel_handlers[channel].tmp_handler = callback
