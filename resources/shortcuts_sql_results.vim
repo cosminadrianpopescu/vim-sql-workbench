@@ -6,4 +6,4 @@ nmap <buffer> <C-i> :SWSqlObjectInfo<cr>
 nmap <buffer> <Leader>os :SWSqlObjectSource<cr>
 nmap <buffer> <C-m> :SWSqlToggleMessages<cr>
 nmap <buffer> <Leader>d :SWSqlToggleFormDisplay<cr>
-
+nmap <buffer> <leader><C-@> :SWSqlRefreshResultSet<cr>

@@ -25,7 +25,10 @@ let s:pattern_prompt = s:pattern_prompt_begin . '$'
 let s:pattern_wait_input = '\v^([a-zA-Z_][a-zA-Z0-9_]*( \[[^\]]+\])?: |([^\>]+\> )?([^\>]+\> )*Username|([^\>]+\> )*Password: |([^\>]+\>[ ]+)?Do you want to run the command [A-Z]+\? \(Yes\/No\/All\)[ ]+)$'
 let s:params_history = []
 let s:pattern_new_connection = '\v^Connection to "([^"]+)" successful$'
+let s:pattern_wbconnect = '\v.*wbconnect[ \t\n\r]+(-profile\=[ \r\n\t]*)?([^ \r\t\n;]+).*$'
+let s:pattern_wbconnect_group = '\v\c.*wbconnect.+-(profile)?group\=[ \r\n\t]*([^ \r\t\n;]+).*$'
 let s:timer = {'id': -1, 'sec' : 0}
+let s:events = {}
 
 function! sw#server#get_channel_pid(vid, channel, message)
     for handler_item in items(s:channel_handlers)
@@ -96,10 +99,11 @@ function! sw#server#prompt_for_value(channel, line, timer_id)
 endfunction
 
 function! sw#server#handle_message(channel, msg)
-    if has_key(s:channel_handlers[a:channel], 'pid') && s:channel_handlers[a:channel].pid == ''
-        call s:get_channel_pid(a:channel)
+    let channel = sw#find_channel(s:channel_handlers, a:channel)
+    if has_key(s:channel_handlers[channel], 'pid') && s:channel_handlers[channel].pid == ''
+        call s:get_channel_pid(channel)
     endif
-    call s:log_channel(a:channel, a:msg)
+    call s:log_channel(channel, a:msg)
     let lines = split(substitute(a:msg, "\r", "", 'g'), "\n")
     let got_prompt = 0
     let max_length = 0
@@ -116,37 +120,37 @@ function! sw#server#handle_message(channel, msg)
                 call add(s:params_history, {'prompt': line, 'value': value})
                 call jobsend(b:sw_channel, value . "\n")
             else
-                let Func = function('sw#server#prompt_for_value', [a:channel, line])
+                let Func = function('sw#server#prompt_for_value', [channel, line])
                 let got_prompt = 1
                 let timer_id = timer_start(500, Func)
             endif
         endif
 
-        if line =~ s:pattern_new_connection 
-            let s:channel_handlers[a:channel].current_url = substitute(line, s:pattern_new_connection, '\1', 'g')
+        if line =~ s:pattern_new_connection && !s:channel_handlers[channel].background
+            let s:channel_handlers[channel].current_url = substitute(line, s:pattern_new_connection, '\1', 'g')
         endif
     endfor
-    let s:channel_handlers[a:channel].text .= text . "\n"
+    let s:channel_handlers[channel].text .= text . "\n"
     if got_prompt
-        let type = s:channel_handlers[a:channel].type
-        if (type == 'sqlwindow')
-            if s:channel_handlers[a:channel].tmp_handler != ''
-                let Func = function(s:channel_handlers[a:channel].tmp_handler)
-                call Func(s:channel_handlers[a:channel].text)
-                let s:channel_handlers[a:channel].tmp_handler = ''
-            else
-                call sw#sqlwindow#message_handler(a:channel, s:channel_handlers[a:channel].text)
-            endif
-        elseif (type == 'dbexplorer')
-            call sw#dbexplorer#message_handler(a:channel, s:channel_handlers[a:channel].text)
+        if s:channel_handlers[channel].tmp_handler != ''
+            let Func = function(s:channel_handlers[channel].tmp_handler)
+            call Func(s:channel_handlers[channel].text)
+            let s:channel_handlers[channel].tmp_handler = ''
+        else
+            let Func = function(s:channel_handlers[channel].handler)
+            call Func(channel, s:channel_handlers[channel].text)
         endif
 
-        let s:channel_handlers[a:channel].text = ''
+        let s:channel_handlers[channel].text = ''
         call s:init_timer()
     endif
 endfunction
 
-function! s:start_sqlwb(type)
+function! sw#server#start_sqlwb(handler, ...)
+    let background = 0
+    if a:0
+        let background = a:1
+    endif
     let vid = substitute(v:servername, '\v\/', '-', 'g') . sw#generate_unique_id()
     let cmd = [g:sw_exe, '-feedback=true', '-showProgress=false', '-showTiming=true', '-nosettings', '-variable=vid=' . vid]
 
@@ -179,30 +183,27 @@ function! s:start_sqlwb(type)
         let pid = jobpid(channel)
     endif
 
-    let s:channel_handlers[channel] = {'text': '', 'type': a:type, 'buffer': fnamemodify(bufname('%'), ':p'), 'current_url': '', 'tmp_handler': '', 'vid': vid, 'pid': pid}
+    let s:channel_handlers[channel] = {'text': '', 'buffers': background ? [] : [fnamemodify(bufname('%'), ':p')], 'current_url': '', 'tmp_handler': '', 'vid': vid, 'pid': pid, 'handler': a:handler, 'current_profile': '', 'background': background}
     call s:log_init(channel)
+
+    call s:trigger_event(channel, 'new_instance', {'channel': channel})
 
     return channel
 endfunction
 
-function! sw#server#connect_buffer(...)
-    let file = bufname('%')
-    let command = 'e'
-    if (a:0 >= 2)
-        let file = a:2
-        let command = a:1
-    elseif a:0 >= 1
-        let command = a:1
+function! sw#server#share_connection(buffer)
+    let channel = getbufvar(a:buffer, 'sw_channel')
+    if channel == ''
+        call sw#display_error('The buffer ' . buffer . ' is not an sql workbench buffer')
+        return
     endif
 
-    execute command . " " . file
-    call sw#session#init_section()
-
-    if (!exists('b:sw_channel'))
-        let b:sw_channel = s:start_sqlwb('sqlwindow')
-    endif
-
-    call sw#sqlwindow#open_buffer(file, command)
+    let b:sw_channel = channel
+    for key in keys(s:channel_handlers)
+        if key == channel
+            call add(s:channel_handlers[key]['buffers'], fnamemodify(bufname('%'), ':p'))
+        endif
+    endfor
 endfunction
 
 function! sw#server#execute_sql(sql, ...)
@@ -216,6 +217,17 @@ function! sw#server#execute_sql(sql, ...)
         let callback = a:2
     elseif a:0 >= 1
         let channel = a:1
+    endif
+    if a:sql =~ s:pattern_wbconnect
+        let profile = substitute(a:sql, s:pattern_wbconnect, '\2', 'g')
+        if a:sql =~ s:pattern_wbconnect_group
+            let group = substitute(a:sql, s:pattern_wbconnect_group, '\2', 'g')
+            let profile = group . '\' . profile
+        endif
+
+        call s:trigger_event(channel, 'profile_changed', {'profile': profile, 'buffer': bufnr('%')})
+
+        let s:channel_handlers[channel].current_profile = profile
     endif
     if !s:nvim
         if ch_status(channel) != 'open'
@@ -236,9 +248,21 @@ function! sw#server#execute_sql(sql, ...)
     else
         call ch_sendraw(channel, text)
     endif
-    if g:sw_command_timer
+    if g:sw_command_timer && !s:channel_handlers[channel].background
         call s:init_timer()
         let s:timer.id = timer_start(1000, 'sw#server#timer', {'repeat': -1})
+    endif
+endfunction
+
+function s:trigger_event(channel, event, args)
+    if s:channel_handlers[a:channel].background
+        return
+    endif
+    if has_key(s:events, a:event)
+        for event in s:events[a:event]
+            let Func = function(event)
+            call Func(a:args)
+        endfor
     endif
 endfunction
 
@@ -256,12 +280,12 @@ endfunction
 
 function! sw#server#disconnect_buffer(...)
     let channel = ''
-    if (exists('b:sw_channel'))
-        let channel = b:sw_channel
-        unlet b:sw_channel
-    endif
     if a:0
         let channel = a:1
+    endif
+    if exists('b:sw_channel') && channel == ''
+        let channel = b:sw_channel
+        unlet b:sw_channel
     endif
     if channel == ''
         return
@@ -302,22 +326,38 @@ function! sw#server#kill_statement(...)
     endif
 endfunction
 
-function! sw#server#get_buffer_url(buffer)
+function! s:get_channel_handler_prop(buffer, prop)
+    if a:buffer =~ '\v^[0-9]+$'
+        let name = bufname(a:buffer)
+    else
+        let name = a:buffer
+    endif
+    let buffer = fnamemodify(name, ':p')
     for key in keys(s:channel_handlers)
-        if s:channel_handlers[key]['buffer'] == a:buffer
-            return s:channel_handlers[key]['current_url']
-        endif
+        for buff in s:channel_handlers[key]['buffers']
+            if buff == buffer
+                return s:channel_handlers[key][a:prop]
+            endif
+        endfor
     endfor
 
     return ''
 endfunction
 
+function! sw#server#get_buffer_url(buffer)
+    return s:get_channel_handler_prop(a:buffer, 'current_url')
+endfunction
+
+function! sw#server#get_buffer_profile(buffer)
+    return s:get_channel_handler_prop(a:buffer, 'current_profile')
+endfunction
+
 function! sw#server#get_active_connections()
     let result = ''
-    for key in keys(s:channel_handlers)
-        let url = s:channel_handlers[key]['current_url']
-        let result .= (result == '' ? '' : "\n") . s:channel_handlers[key]['buffer'] . ' - ' . (url == '' ? 'NOT CONNECTED' : url)
-    endfor
+    ""for key in keys(s:channel_handlers)
+    ""    let url = s:channel_handlers[key]['current_url']
+    ""    let result .= (result == '' ? '' : "\n") . s:channel_handlers[key]['buffer'] . ' - ' . (url == '' ? 'NOT CONNECTED' : url)
+    ""endfor
 
     return result == '' ? 'No active sql workbench buffers' : result
 endfunction
@@ -326,14 +366,14 @@ function! sw#server#tmp()
     return s:channel_handlers
 endfunction
 
-function! sw#server#open_dbexplorer(profile)
-    let channel = s:start_sqlwb('dbexplorer')
-    let command = sw#get_connect_command(a:profile)
-    call sw#server#execute_sql(command, channel)
-
-    return channel
-endfunction
-
 function! sw#server#get_parameters_history()
     return s:params_history
+endfunction
+
+function! sw#server#add_event(event, listener)
+    if !has_key(s:events, a:event)
+        let s:events[a:event] = []
+    endif
+
+    call add(s:events[a:event], a:listener)
 endfunction

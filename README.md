@@ -420,11 +420,6 @@ the command will be sent to the DBMS when opening the file.
 
 Examples: 
 
-`-- before :SWSqlAutocompleteLoad <file>`
-
-This command will load the intellisense autocomplete options saved in with
-`SWSqlAutocompletePersist <file>`. 
-
 `-- before start transaction;`
 
 This command will be sent to the DBMS and will start a new transaction every
@@ -455,13 +450,64 @@ In visual mode, you can press `<leader>ctrl + a` or your own custom shortcut.
 Alternatively, you can execute the `SWSqlExecuteAll` command. All the buffer
 is going to be sent to the DBMS. 
 
+## Events
+
+The following events exist in the plugin: 
+
+* `new_instance` (triggered when a new instance of `SQL Workbench/J` is
+  spawned).
+* `profile_changed` (triggered every time a connection to a new profile is
+  detected)
+
+In order to attach a hook to an event, you have to call `sw#server#add_event`
+with 2 arguments: the event name and the event listener. For an example, check
+the `plugin/sw.vim` file in the source code.
+
+## Schema report
+
+`SQL Workbench/J` has the ability to generate a very usefull schema report.
+This report is used by the autocomplete intellisense and by references tree.
+If you want to have intellisense for a profile, in the GUI of `SQL
+Workbench/J` profiles page, add the extended property `report` with the value
+`true` (see
+[here](http://www.sql-workbench.net/manual/profiles.html#profile-extended-properties)).
+The report is going to be generated using a paralel background connection.
+This means that the current connection will not have to suffer if the report
+generation will take too long (depending on your database size, this can even
+take several minutes). 
+
+It is very usefull to have this report. Other than intellisense, you can also
+see in the db explorer the dependencies tree (`Referenced by` and `References`
+options). 
+
+Please note that the intellisense and the references tree will not work
+without this report. 
+
+If you have schemas with the same structure from one profile to another you
+don't have to generate the report for all the profiles. You can generate it
+from one profile (usually `dev` or `test`) and for the rest of the profiles
+you can set the extended property `use-report` with the value of the other
+profile name, including the group. 
+
+So, for example, if you have the profiles `dev` in the group `LOCAL` and
+`prod`, which are basically identically, you might not want to run the schema
+report on prod. So, you set the extended property `report` with the value
+`true` for the `dev` profile and the extended property `use-report` with the
+value `LOCAL\dev`. Like this, every time when you connect to the `dev`
+profile, a new connection will be spawned in the background which will
+generate the schema report. Once this is generated at least once, you have
+intellisense and references tree available. And every time you connect to the
+`prod` profile, you always have the same intellisense autocomplete and the
+references tree.
+
 ## Intellisense
 
 `vim-sqlworkbench` plugin comes with intellisense out of the box. In order to
-take advantage of the auto complete intellisense, you have to execute first
-the `SWSqlAutocomplete` command. Depending on how many tables and views you
-have in your database, it might take even more than one minute. After the
-command is executed, normally you can press &lt;C-x&gt;&lt;C-u&gt; in insert
+take advantage of the auto complete intellisense, you have to set the schema
+report (see the previous section).
+
+If the schema report is available (either by setting the `report` option or by
+setting the `use-report` option) you can press &lt;C-x&gt;&lt;C-u&gt; in insert
 mode in a sql statement. 
 
 *Note*: due to constant conflicts with dbext plugin (which apparently has some
@@ -484,36 +530,6 @@ at the level of the subquery.
 
 If you are in a `union` `select` statement, the system will try to determine
 in which `select` the cursor is placed and execute auto completion for that sql. 
-
-As stated before, enabling the auto completion for a buffer can take some
-time. Normally, whenever you execute a `SWSqlAutocomplete`, the data is cached
-in memory in vim buffer variables. If you want to persist in on the hard
-drive with `SWSqlAutocompletePersist myProfile` command. This will save the
-data on hard drive. Later you can reload it with `SWSqlAutocompleteLoad
-myProfile`. Combined with `-- before` comments in the file, you can have the
-autocomplete loaded every time you open a file. 
-
-If you modify a table then, you can do `SWSqlAutocomplete modified_table`.
-This will be very fast, as it will only load the data for the table. You can
-send as many tables at once. Of course, more tables you send, the longer it
-will take to complete. For example, you can do `SWSqlAutocomplete
-modified_table1 modified_table2`. This will reload the data for
-`modified_table1` and `modified_table2`. 
-
-If you drop a table, you can always execute `SWSqlAutocomplete` with the name
-of the table preceded by a `-`. This will eliminate the table from the
-autocomplete list. For example: `SWSqlAutocomplete -dropped_table`. You can
-combine in the same statement adding and deleting of tables. For example:
-`SWSqlAutocomplete -dropped_table new_table`. 
-
-You can also execute `SWSqlAutocomplete!`. This will reset any autocomplete
-option and will reload again all the tables. 
-
-Unfortunately, the autocomplete for the functions and procedures is limited.
-This is because `SQL Workbench/J` does not provide also a list of parameters
-through a `SQL Workbench` command. I can only retrieve the name of the
-function or procedure. Also, the autocomplete for the procedure and functions
-is limited to the `WbCall` command. 
 
 *NOTE*: The autocomplete feature is implemented using regular expressions.
 Because of using regular expressions, it's possible that I've missed cases. If
@@ -899,18 +915,6 @@ all the parameters the values defined through the vim variables:
 * `g:sw_search_default_exclude_tables`
 * `g:sw_search_default_exclude_lobs`
 
-## SWSqlAutocomplete
-
-This command enables the intellisense autocomplete for the current sql buffer.
-After this command you can use &lt;C-x&gt;&lt;C-o&gt; for autocomplete. 
-
-You can have as arguments any number of tables from the database to fetch the
-autocomplete information only about those tables. You can also precede any
-name table with a `-`. In this case, the information will be deleted from the
-plugin cache. 
-
-The arguments are useful, if you use the `g:sw_autocomplete_on_load` option. 
-
 ## SWDbExplorerToggleFormDisplay
 
 If on a line in the results panel which contains a row in a resultset, then
@@ -1059,6 +1063,18 @@ window.
 
 This command will refresh the currently selected resultset from the resultsets
 window.
+
+## SWSqlBufferShareConnection
+
+This command will share a connection between the current buffer and the one
+indicated in the command
+
+## SWSqlForeignKey
+
+When in a result set, you can go to a row and call this command with a column
+as an argument. A new sql will be generated and you will see the corresponding
+column foreign key row. For this to work, the `report` or `use-report` option
+has to be active (see the `Schema report` section)
 
 Settings
 ========================================

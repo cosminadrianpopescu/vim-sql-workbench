@@ -32,9 +32,12 @@ let s:current_buffer = ''
 "
 function! ctrlp#sw_profiles#accept(mode, str)
     let command = sw#get_connect_command(a:str)
-    call sw#server#connect_buffer('e', s:current_buffer)
+    call sw#sqlwindow#connect_buffer('e', s:current_buffer)
     call sw#sqlwindow#execute_sql(command)
     let s:current_buffer = ''
+    if exists('s:position')
+        call setpos('.', s:position)
+    endif
 endfunction
 
 " (optional) Do something after exiting ctrlp
@@ -43,7 +46,7 @@ function! ctrlp#sw_profiles#exit()
 endfunction
 
 function! ctrlp#sw_profiles#init()
-    let profiles = sw#parse_profile_xml()
+    let profiles = sw#profiles#get()
 
     let result = []
     for key in keys(profiles)
@@ -68,6 +71,7 @@ function! ctrlp#sw_profiles#enter()
         bwipeout 
         let s:current_buffer = bufname('%')
     endif
+    let s:position = getcurpos()
 endfunction
 
 " vim:nofen:fdl=0:ts=4:sw=4:sts=4

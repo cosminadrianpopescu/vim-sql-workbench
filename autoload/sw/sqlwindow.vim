@@ -19,7 +19,7 @@
 
 let s:pattern_resultset_title = '\v^[\=]SQL ([0-9]+)'
 let s:pattern_ignore_line = '\v\c^#IGNORE#$'
-let s:script_path = expand('<sfile>:p:h') . '/../../'
+let s:script_path = sw#script_path()
 let g:sw_last_resultset = []
 
 function! s:check_sql_buffer()
@@ -99,6 +99,7 @@ endfunction
 function! s:do_open_buffer()
     call sw#session#autocommand('BufDelete', 'sw#sqlwindow#auto_disconnect_buffer()')
     call sw#session#autocommand('BufEnter', 'sw#sqlwindow#check_results()')
+    call sw#session#autocommand('BufEnter', 'sw#autocomplete#set()')
     call sw#session#set_buffer_variable('delimiter', g:sw_delimiter)
     call sw#session#set_buffer_variable('unique_id', sw#generate_unique_id())
     call sw#sqlwindow#set_statement_shortcuts()
@@ -208,6 +209,11 @@ function! sw#sqlwindow#toggle_display()
     ""endif
     if b:state == 'form' || b:state == 'resultsets'
         call s:display_resultsets(1)
+
+        if b:state == 'resultsets' && exists('b:position')
+            call setpos('.', b:position)
+            normal zMza
+        endif
     endif
 endfunction
 
@@ -297,6 +303,40 @@ function! sw#sqlwindow#unfilter_column(column)
     unlet b:resultsets[n].filters[column]
 
     call s:display_resultsets(1)
+endfunction
+
+function! sw#sqlwindow#go_to_ref(column)
+    let n = s:get_n_resultset()
+    if n == -1
+        return
+    endif
+
+    let sql = b:resultsets[n].sql
+    let table = substitute(sw#autocomplete#get_tables_part(sql, 'select')[0], '\v;[ \n\t\r]*$', '', 'g')
+
+    let b = s:get_buffer_from_resultset(b:resultsets[n].channel)
+    if has_key(b, 'bufnr')
+        let profile = sw#server#get_buffer_profile(fnamemodify(bufname(b.bufnr), ':p'))
+        let new_sql = sw#report#get_foreign_key_sql(profile, table, a:column)
+        if new_sql == ''
+            call sw#display_error("Could not identify the foreign key")
+            return 
+        endif
+        let column = s:get_column(a:column, n)
+        if !has_key(b:resultsets[n], 'columns')
+            let b:resultsets[n].columns = s:split_into_columns(b:resultsets[n])
+        endif
+        let col_idx = index(b:resultsets[n].header, a:column)
+        let resultset_start = s:get_resultset_start()
+        let line = line('.') - resultset_start - 1
+        let value = sw#trim(b:resultsets[n].columns[line + 2][col_idx + 1])
+        let new_sql = substitute(new_sql, '#value#', value, 'g')
+        let b = s:get_buffer_from_resultset(b:resultsets[n].channel)
+        if has_key(b, 'name')
+            let file = b.name
+        endif
+        call s:execute_sql_from_resultset(b:resultsets[n], s:add_title_to_sql(new_sql . ';'))
+    endif
 endfunction
 
 function! sw#sqlwindow#filter_column(column)
@@ -857,6 +897,15 @@ function! s:do_execute_sql(sql)
     call sw#execute_sql(a:sql)
 endfunction
 
+function! s:add_title_to_sql(sql)
+    let _sql = a:sql
+    let title = substitute(a:sql, '\v[\n\r]', ' ', 'g')
+    if strlen(title) > 255
+        let title = title[:255] . '...'
+    endif
+    return '-- @wbresult ' . title . "\n" . _sql
+endfunction
+
 function! sw#sqlwindow#execute_sql(sql)
     let w:auto_added1 = "-- auto\n"
     let w:auto_added2 = "-- end auto\n"
@@ -864,12 +913,7 @@ function! sw#sqlwindow#execute_sql(sql)
     if (!s:check_sql_buffer())
         return 
     endif
-    let _sql = a:sql
-    let title = substitute(a:sql, '\v[\n\r]', ' ', 'g')
-    if strlen(title) > 255
-        let title = title[:255] . '...'
-    endif
-    let _sql = '-- @wbresult ' . title . "\n" . _sql
+    let _sql = s:add_title_to_sql(a:sql)
     call s:do_execute_sql(_sql)
 endfunction
 
@@ -1004,31 +1048,42 @@ function! sw#sqlwindow#get_count(statement)
     call sw#sqlwindow#execute_sql(sql)
 endfunction
 
-function! sw#sqlwindow#refresh_resultset()
-    let n = s:get_n_resultset()
-    let sql = b:resultsets[n]['sql']
-    let channel = b:resultsets[n]['channel']
-    let file = ''
+function! s:get_buffer_from_resultset(channel)
     for info in getbufinfo()
-        if getbufvar(info['bufnr'], 'sw_channel') == channel
-            let file = info['name']
-            break
+        if getbufvar(info['bufnr'], 'sw_channel') == a:channel
+            return info
         endif
     endfor
+
+    return {}
+endfunction
+
+function! s:execute_sql_from_resultset(resultset, sql)
+    let file = ''
+    let b = s:get_buffer_from_resultset(a:resultset.channel)
+    if has_key(b, 'name')
+        let file = b.name
+    endif
     if file != ''
-        let id = b:resultsets[n]['id']
-        for resultset in b:resultsets
-            if resultset['id'] == id
-                let resultset['wait_refresh'] = 1
-            endif
-        endfor
         call sw#goto_window(file)
         if bufname('%') == sw#sqlwindow#get_resultset_name()
             call sw#display_error("Could not identify the buffer for this resultset")
             return
         endif
-        call sw#execute_sql(sql)
+        call sw#execute_sql(a:sql)
     endif
+endfunction
+
+function! sw#sqlwindow#refresh_resultset()
+    let n = s:get_n_resultset()
+    let sql = b:resultsets[n]['sql']
+    let id = b:resultsets[n]['id']
+    for resultset in b:resultsets
+        if resultset['id'] == id
+            let resultset['wait_refresh'] = 1
+        endif
+    endfor
+    call s:execute_sql_from_resultset(b:resultsets[n], sql)
 endfunction
 
 function! s:delete_filter(idx, val)
@@ -1040,4 +1095,33 @@ function! sw#sqlwindow#delete_resultset()
     let s:_id = b:resultsets[n]['id']
     call filter(b:resultsets, function('s:delete_filter'))
     call s:display_resultsets(1)
+endfunction
+
+function! sw#sqlwindow#connect_buffer(...)
+    let file = bufname('%')
+    let command = 'e'
+    if (a:0 >= 2)
+        let file = a:2
+        let command = a:1
+    elseif a:0 >= 1
+        let command = a:1
+    endif
+
+    execute command . " " . file
+    call sw#session#init_section()
+
+    if exists('b:autocomplete_tables')
+        unlet b:autocomplete_tables
+    endif
+
+    if (!exists('b:sw_channel'))
+        let b:sw_channel = sw#server#start_sqlwb('sw#sqlwindow#message_handler')
+    endif
+
+    call sw#sqlwindow#open_buffer(file, command)
+endfunction
+
+function! sw#sqlwindow#share_connection(buffer)
+    call sw#server#share_connection(a:buffer)
+    call sw#sqlwindow#open_buffer(bufname('%'), 'e')
 endfunction

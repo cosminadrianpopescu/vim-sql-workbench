@@ -21,8 +21,8 @@ let s:_pattern_identifier = '((\a|_|[0-9])+|#sq[0-9]+#)'
 let s:pattern_identifier = '\v' . s:_pattern_identifier
 let s:pattern_reserved_word = '\v\c<(inner|outer|right|left|join|as|using|where|group|order|and|or|not)>'
 let s:pattern_subquery = '\v#sq([0-9]+)#'
-let s:script_path = expand('<sfile>:p:h') . '/../../'
 let s:pattern_expressions = '\v\c\(([\s\t ]*select)@![^\(\)]{-}\)'
+let s:script_path = sw#script_path()
 
 function! s:eliminate_sql_comments(sql)
     let sql = sw#get_sql_canonical(a:sql)[0]
@@ -33,12 +33,6 @@ function! s:eliminate_sql_comments(sql)
 
     return sql
 endfunction
-
-if exists('g:sw_plugin_path')
-    " This is for cygwin. If we are under cygwin, the sqlworkbench will be a
-    " windows application, and vim will work with linux paths
-    let s:script_path = g:sw_plugin_path
-endif
 
 function! sw#autocomplete#sort(e1, e2)
     return a:e1.word == a:e2.word ? 0 : a:e1.word > a:e2.word ? 1 : -1
@@ -127,26 +121,6 @@ function! s:deprecated(name, alternative)
     echomsg a:alternative
 endfunction
 
-function! sw#autocomplete#got_result()
-    call sw#session#init_section()
-    if exists('b:autocomplete_clear') || !exists('b:autocomplete_tables')
-        call sw#session#set_buffer_variable('autocomplete_procs', {})
-        call sw#session#set_buffer_variable('autocomplete_tables', {})
-    endif
-    if filereadable(g:sw_tmp . "/sw_report_tbl.vim")
-        call s:execute_file(g:sw_tmp . "/sw_report_tbl.vim")
-        call sw#session#set_buffer_variable('autocomplete_tables', b:autocomplete_tables)
-    endif
-    if filereadable(g:sw_tmp . "/sw_report_proc.vim")
-        call s:execute_file(g:sw_tmp . "/sw_report_proc.vim")
-        call sw#session#set_buffer_variable('autocomplete_procs', b:autocomplete_procs)
-    endif
-    setlocal completefunc=sw#autocomplete#perform
-    unlet b:autocomplete_clear
-    call sw#sqlwindow#check_results()
-	echomsg "Autocomplete activated"
-endfunction
-
 function! sw#autocomplete#remove_table_from_cache(tbl)
     if exists('b:autocomplete_tables')
         for key in keys(b:autocomplete_tables)
@@ -157,61 +131,6 @@ function! sw#autocomplete#remove_table_from_cache(tbl)
         endfor
         call sw#session#set_buffer_variable('autocomplete_tables', b:autocomplete_tables)
     endif
-endfunction
-
-function! sw#autocomplete#persist(name)
-    let lines = ['let b:autocomplete_tables = {}']
-    call add(lines, 'let b:autocomplete_procs = {}')
-    if exists('b:autocomplete_tables')
-        for key in keys(b:autocomplete_tables)
-            call add(lines, 'let b:autocomplete_tables["' . escape(key, '"') . '"] = ' . string(b:autocomplete_tables[key]))
-        endfor
-    endif
-    if exists('b:autocomplete_procs')
-        for key in keys(b:autocomplete_procs)
-            call add(lines, 'let b:autocomplete_procs["' . escape(key, '"') . '"] = ' . string(b:autocomplete_procs[key]))
-        endfor
-    endif
-    call writefile(lines, g:sw_autocomplete_cache_dir . '/' . a:name . '.vim')
-endfunction
-
-function! sw#autocomplete#load(name)
-    call s:execute_file(g:sw_autocomplete_cache_dir . '/' . a:name . '.vim')
-    setlocal completefunc=sw#autocomplete#perform
-endfunction
-
-function! sw#autocomplete#cache(bang, ...)
-    if (!exists('b:port'))
-        return
-    endif
-    call sw#session#init_section()
-    let objects = '%'
-    if a:0
-        let i = 1
-        let objects = ''
-        while i <= a:0
-            execute "let obj = a:" . i
-            if obj =~ '^-'
-                call sw#autocomplete#remove_table_from_cache(substitute(obj, '^-', '', 'g'))
-            else
-                let objects = (objects == '' ? '' : ',') . obj
-            endif
-            let i = i + 1
-        endwhile
-    endif
-
-    if objects == ''
-        return 
-    endif
-    let sql = "WbSchemaReport -file=" . g:sw_tmp . "/sw_report.xml -objects=" . objects . " -types='TABLE,VIEW,SYSTEM VIEW,MATERIALIZED VIEW,TEMPORARY TABLE,SYNONYM' -stylesheet=" . s:script_path . "resources/wbreport2vim.xslt -xsltOutput=" . g:sw_tmp . "/sw_report_tbl.vim;\n"
-    let sql = sql . "WbExport -type=xml -file=" . g:sw_tmp . "/sw_procs.xml -stylesheet=" . s:script_path . "resources/wbprocedures2vim.xslt -lineEnding=lf -xsltOutput=" . g:sw_tmp . "/sw_report_proc.vim;\n"
-    let sql = sql . "WBListProcs;"
-
-    call sw#set_on_async_result('sw#autocomplete#got_result')
-    if a:bang
-        let b:autocomplete_clear = 1
-    endif
-    let result = sw#execute_sql(sql, 0)
 endfunction
 
 function! s:get_cache_tables()
@@ -299,8 +218,13 @@ endfunction
 function! sw#autocomplete#perform(findstart, base)
     " Check that the cache is alright
     if !exists('b:autocomplete_tables') && !exists('g:sw_autocomplete_default_tables')
-        call sw#display_error("First you have to clear the completion cache to use autocomplete")
-        return []
+        let profile = sw#server#get_buffer_profile(bufname('%'))
+        let tables = sw#report#autocomplete_tables(profile)
+        if len(tables) > 0
+            let b:autocomplete_tables = tables
+        else
+            return []
+        endif
     endif
 	call sw#session#init_section()
     if (exists('b:sql'))
@@ -472,11 +396,11 @@ function! sw#autocomplete#perform(findstart, base)
 
             return sort(result, "sw#autocomplete#sort")
         elseif b:autocomplete_type == 'wbconnect'
-            let profiles = sw#parse_profile_xml()
+            let profiles = sw#profiles#get()
             let result = []
             for profile in keys(profiles)
-                if profile =~ '^' . a:base
-                    call add(result, profile)
+                if profile['name'] =~ '^' . a:base
+                    call add(result, profile['name'])
                 endif
             endfor
 
@@ -545,7 +469,12 @@ function! s:get_fields_part(sql)
     return substitute(sql, pattern, '\1', 'g')
 endfunction
 
-function! s:get_tables_part(sql)
+function! sw#autocomplete#get_tables_part(sql, ...)
+    if a:0
+        let autocomplete_type = a:1
+    else
+        let autocomplete_type = b:autocomplete_type
+    endif
     let sql = s:eliminate_sql_comments(a:sql)
     let _subqueries = s:extract_subqueries(sql)
     let sql = _subqueries[0]
@@ -559,10 +488,10 @@ function! s:get_tables_part(sql)
             let in_subquery = 1
         endif
     endif
-    if b:autocomplete_type == 'select' || in_subquery
+    if autocomplete_type == 'select' || in_subquery
         let pattern1 = '\v\c^.*from(.{-})<(where|group|order|having|limit|into)>.*$'
         let pattern2 = '\v\c^.*from(.*)$'
-    elseif b:autocomplete_type == 'update'
+    elseif autocomplete_type == 'update'
         let pattern1 = '\v\c^.*update(.{-})<set>.*$'
         let pattern2 = '\v\c^.*update(.*)$'
     endif
@@ -639,7 +568,7 @@ function! s:get_subquery_fields(sql, subqueries)
                 endfor
             else
                 " Otherwise, get the from part of this subquery
-                let _r = s:get_tables_part(sql)
+                let _r = sw#autocomplete#get_tables_part(sql)
                 let from = _r[0]
                 let subqueries = _r[1] + a:subqueries
                 let from = s:canonize_from(from)
@@ -706,7 +635,7 @@ function! s:get_tables(sql, subqueries)
     ""endif
 
     " Get the from part and eliminate the subqueries
-    let result = s:get_tables_part(a:sql)
+    let result = sw#autocomplete#get_tables_part(a:sql)
     let from = result[0]
     let subqueries = result[1] + a:subqueries
     unlet result
@@ -775,4 +704,8 @@ function! sw#autocomplete#complete_cache_name(ArgLead, CmdLine, CursorPos)
         endif
     endfor
     return result
+endfunction
+
+function! sw#autocomplete#set()
+    setlocal completefunc=sw#autocomplete#perform
 endfunction

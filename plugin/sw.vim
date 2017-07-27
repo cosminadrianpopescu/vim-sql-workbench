@@ -145,6 +145,10 @@ if !exists('g:sw_command_timer')
     let g:sw_command_timer = 1
 endif
 
+if !exists('g:sw_autocomplete')
+    let g:sw_autocomplete = 1
+endif
+
 "if !exists('g:sw_overwrite_current_command')
 "    let g:sw_overwrite_current_command = 0
 "endif
@@ -193,7 +197,8 @@ command! -nargs=+ -complete=customlist,sw#autocomplete_profile SWDbExplorer call
 command! -nargs=? SWDbExplorerClose call sw#dbexplorer#hide_panel(<f-args>)
 command! SWDbExplorerReconnect call sw#dbexplorer#reconnect()
 command! SWDbExplorerToggleFormDisplay call sw#dbexplorer#toggle_form_display()
-command! -nargs=* -complete=file SWSqlBufferConnect call sw#server#connect_buffer(g:sw_sqlopen_command, <f-args>)
+command! -nargs=1 -complete=buffer SWSqlBufferShareConnection call sw#sqlwindow#share_connection(bufnr(<f-args>))
+command! -nargs=* -complete=file SWSqlBufferConnect call sw#sqlwindow#connect_buffer(g:sw_sqlopen_command, <f-args>)
 command! -nargs=* -complete=file SWSqlBufferDisconnect call sw#server#disconnect_buffer()
 command! SWSqlExecuteCurrent call sw#sqlwindow#execute_sql(sw#sqlwindow#extract_current_sql())
 command! SWSqlExecuteSelected call sw#sqlwindow#execute_sql(sw#sqlwindow#extract_selected_sql())
@@ -219,14 +224,12 @@ command! -nargs=1 SWSearchObjectDefaults call sw#search#object_defaults(<f-args>
 command! -nargs=+ SWSearchData call sw#search#data(<f-args>)
 command! SWSearchDataAdvanced call sw#search#data()
 command! -nargs=1 SWSearchDataDefaults call sw#search#data_defaults(<f-args>)
-command! -bang -nargs=* SWSqlAutocomplete call sw#autocomplete#cache(<bang>0, <f-args>)
-command! -nargs=1 -complete=customlist,sw#autocomplete#complete_cache_name SWSqlAutocompleteLoad call sw#autocomplete#load(<f-args>)
-command! -nargs=1 -complete=customlist,sw#autocomplete#complete_cache_name SWSqlAutocompletePersist call sw#autocomplete#persist(<f-args>)
 command! -nargs=0 SWSqlShowAllColumns call sw#sqlwindow#show_all_columns()
 command! -nargs=1 -complete=customlist,sw#sqlwindow#complete_columns SWSqlShowOnlyColumn call sw#sqlwindow#show_only_column(<f-args>)
 command! -nargs=+ -complete=customlist,sw#sqlwindow#complete_columns SWSqlShowOnlyColumns call sw#sqlwindow#show_only_columns([<f-args>])
 command! -nargs=1 -complete=customlist,sw#sqlwindow#complete_columns SWSqlShowColumn call sw#sqlwindow#show_column(<f-args>, 1)
 command! -nargs=1 -complete=customlist,sw#sqlwindow#complete_columns SWSqlHideColumn call sw#sqlwindow#hide_column(<f-args>, 1)
+command! -nargs=1 -complete=customlist,sw#sqlwindow#complete_columns SWSqlForeignKey call sw#sqlwindow#go_to_ref(<f-args>)
 command! -nargs=1 -complete=customlist,sw#sqlwindow#complete_columns SWSqlFilterColumn call sw#sqlwindow#filter_column(<f-args>)
 command! -nargs=1 -complete=customlist,sw#sqlwindow#complete_columns SWSqlUnfilterColumn call sw#sqlwindow#un_filter_column(<f-args>)
 command! -nargs=0 SWSqlRemoveAllFilters call sw#sqlwindow#remove_all_filters()
@@ -238,7 +241,10 @@ command! -nargs=1 SWServerStop call sw#server#stop(<f-args>)
 augroup sw
 autocmd sw BufDelete,BufWipeout * call sw#session#sync()
 autocmd sw SessionLoadPost * call sw#session#restore()
+autocmd sw VimEnter * call sw#profiles#update('')
 ""autocmd sw BufEnter * call sw#sqlwindow#close_all_result_sets()
 ""autocmd sw BufEnter * call sw#session#check()
 ""autocmd sw TabEnter * call sw#dbexplorer#restore_from_session()
 
+call sw#server#add_event('profile_changed', 'sw#report#profile_changed')
+call sw#server#add_event('new_instance', 'sw#profiles#update')

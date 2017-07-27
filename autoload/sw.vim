@@ -47,36 +47,11 @@ function! sw#complete_ports(findstart, base, P)
     return result
 endfunction
 
-function! sw#get_server_port()
-    if exists('b:port')
-        return b:port
-    endif
-
-    let b_nr = bufnr('%')
-    let s:ports = []
-    bufdo if exists('b:port') | if (index(s:ports, b:port) < 0) | call add(s:ports, b:port) | endif | endif
-    execute "normal \<c-o>"
-
-    if len(s:ports) == 0
-        return -1
-    endif
-
-    if len(s:ports) == 1
-        return s:ports[0]
-    endif
-
-    let s:ports = s:ports
-    let prompt = ''
-    for port in s:ports
-        let prompt = prompt . (prompt == '' ? '' : ', ') . port
-    endfor
-
-    return input('Please choose a port (' . prompt . '): ', '', 'customlist,sw#complete_ports')
-endfunction
-
 let s:error = 0
 
 let s:patterns = {'pattern_no_results': '\c\v^\(([0-9]+) rows?\)', 'pattern_empty_line': '\v^[\r \s\t]*$', 'pattern_exec_time': '\v^Execution time: [0-9\.]+', 'pattern_resultset_start': '\v^([\-]+\+?)+([\-]*)-$'}
+
+let s:script_path = expand('<sfile>:p:h') . '/../'
 
 if !exists('g:Sw_unique_id')
     let g:Sw_unique_id = 1
@@ -453,44 +428,8 @@ function! sw#parse_macro_xml()
     return result
 endfunction
 
-" Parses the profile xml file to give autocompletion for profiles{{{1
-function! sw#parse_profile_xml()
-    if !exists('g:sw_config_dir')
-        return {}
-    endif
-
-    let lines = readfile(g:sw_config_dir . 'WbProfiles.xml')
-    let s = ''
-    for line in lines
-        let s = s . ' ' . line
-    endfor
-
-    let s = substitute(s, '\v\c\<object class\="java\.util\.ArrayList"\>', '', 'g')
-    let s = substitute(s, '\v\c\<object class\="(workbench\.db\.ConnectionProfile)@![^"]+"\>.{-}\<\/object\>', '', 'g')
-
-    let pattern = '\v\c(\<object class\="[^"]{-}"\>.{-}\<\/object\>)'
-    let result = {}
-    let n = 0
-    let list = matchlist(s, pattern, n, 1)
-    while len(list) > 0
-        let _pattern = '\v\c^.*\<void property\="#prop#"\>[ \s\r\t]*\<string\>([^\<]+)\<.*$'
-        let name = substitute(list[1], substitute(_pattern, '#prop#', 'name', 'g'), '\1', 'g')
-        let driverName = substitute(list[1], substitute(_pattern, '#prop#', 'driverName', 'g'), '\1', 'g')
-        let group = substitute(list[1], substitute(_pattern, '#prop#', 'group', 'g'), '\1', 'g')
-        if (group != list[1])
-            let name = group . '\' . name
-        endif
-        let result[name] = driverName
-        let n = n + 1
-        let s = substitute(s, '\V' . list[0], '', 'g')
-        let list = matchlist(s, pattern, n, 1)
-    endwhile
-
-    return result
-endfunction
-
 function! sw#autocomplete_profile(ArgLead, CmdLine, CursorPos)
-    let profiles = sw#parse_profile_xml()
+    let profiles = sw#profiles#get()
 
     let result = []
 
@@ -586,4 +525,46 @@ endfunction
 
 function! sw#servername()
     return substitute(v:servername, '\v\/', '-', 'g')
+endfunction
+
+function! sw#trim(s)
+    return substitute(a:s, '\v^[ ]*([^ ]+)[ ]*$', '\1', 'g')
+endfunction
+
+function! sw#script_path()
+    let result = s:script_path
+    if exists('g:sw_plugin_path')
+        " This is for cygwin. If we are under cygwin, the sqlworkbench will be a
+        " windows application, and vim will work with linux paths
+        let result = g:sw_plugin_path
+    endif
+
+    return result
+endfunction
+
+" Finds a channel in a list of channels 
+" (the problem here is that the channel could be closed, so
+" we need to just check the beginning of the keys)
+function! sw#find_channel(list, channel)
+    let pattern = '^\v\c(channel [0-9]+).*$'
+    let search = substitute(a:channel, pattern, '\1', 'g')
+    let channel = ''
+    for ch in keys(a:list)
+        if substitute(ch, pattern, '\1', 'g') == search
+            return a:channel == ch ? a:channel : ch
+        endif
+    endfor
+
+    return channel
+endfunction
+
+" Executes a vim file
+function! sw#execute_file(file)
+    if !filereadable(a:file)
+        return 
+    endif
+    let lines = readfile(a:file)
+    for line in lines
+        execute line
+    endfor
 endfunction

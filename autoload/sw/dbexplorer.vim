@@ -38,15 +38,16 @@ function! s:iterate(f)
         let type_ok = 0
         if (profile =~ '^[:\^]')
             if (len(s:profiles) == 0)
-                let s:profiles = sw#parse_profile_xml()
+                let s:profiles = sw#profiles#get()
             endif
             let dbms_type = substitute(profile, '^[:\^]', '', 'g')
             let cond = substitute(profile, '\v\c^([:\^]).*$', '\1', 'g')
 
+
             for xml_profile in items(s:profiles)
-                if tolower(substitute(xml_profile[0], "\\\\", '___', 'g')) == tolower(b:profile) && 
-                            \ ((tolower(xml_profile[1]) == tolower(dbms_type) && cond == ':') ||
-                            \ (tolower(xml_profile[1]) != tolower(dbms_type) && cond == '^'))
+                if tolower(substitute(xml_profile[1]['name'], "\\\\", '___', 'g')) == tolower(b:profile) && 
+                            \ ((tolower(xml_profile[1]['type']) == tolower(dbms_type) && cond == ':') ||
+                            \ (tolower(xml_profile[1]['type']) != tolower(dbms_type) && cond == '^'))
                     let type_ok = 1
                     break
                 endif
@@ -506,7 +507,7 @@ function! sw#dbexplorer#show_panel(profile)
     execute "badd " . name
     execute "buffer " . name
     let s:last_command = {'type': 3}
-    let channel = sw#server#open_dbexplorer(a:profile)
+    let channel = sw#dbexplorer#open_dbexplorer(a:profile)
     call s:set_special_buffer(profile, channel)
     call sw#session#set_buffer_variable('unique_id', uid)
     nnoremap <buffer> <silent> E :call sw#dbexplorer#export()<cr>
@@ -604,6 +605,51 @@ function! sw#dbexplorer#do_fold_columns(lnum)
     endif
 
     return -1
+endfunction
+
+function! sw#dbexplorer#open_dbexplorer(profile)
+    let channel = sw#server#start_sqlwb('sw#dbexplorer#message_handler')
+    let command = sw#get_connect_command(a:profile)
+    call sw#server#execute_sql(command, channel)
+
+    return channel
+endfunction
+
+function! s:build_tree(data, parent, key, spaces)
+    let result = ''
+    for tbl in keys(a:data)
+        let result .= "\n"
+
+        for i in range(1, a:spaces)
+            let result .= ' '
+        endfor
+
+        let result .= tbl
+
+        if a:parent != ''
+            let result .= ' (' . a:parent . '.' . a:data[tbl]['source-columns'] . ' = ' . tbl . '.' . a:data[tbl]['referenced-columns'] . ')'
+        endif
+
+        let result .= s:build_tree(a:data[tbl][a:key], tbl, a:key, a:spaces + 4)
+    endfor
+
+    return result
+endfunction
+
+" Gets the tree of dependencies
+function! sw#dbexplorer#get_references(tbl)
+    let profile = substitute(b:profile, '___', '\', 'g')
+    let tbl = substitute(a:tbl, '\v\c^([^ ]+) .*$', '\1', 'g')
+    let ref = sw#report#get_references(profile, tbl)
+    return s:build_tree(ref, '', 'references', 0)
+endfunction
+
+" Gets the tree of referenced by
+function! sw#dbexplorer#get_referenced_by(tbl)
+    let profile = substitute(b:profile, '___', '\', 'g')
+    let tbl = substitute(a:tbl, '\v\c^([^ ]+) .*$', '\1', 'g')
+    let ref = sw#report#get_referenced_by(profile, tbl)
+    return s:build_tree(ref, '', 'ref-by', 0)
 endfunction
 
 " vim:fdm=marker
