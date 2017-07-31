@@ -68,7 +68,7 @@ endfunction
 function! s:log_channel(channel, txt)
     if g:sw_log_to_file
         let file = s:channel_handlers[a:channel].log
-        let mode = filereadable(file) ? 'ab' : 'wb'
+        let mode = filereadable(file) || s:nvim ? 'ab' : 'wb'
         call writefile(split(a:txt, "\n"), file, mode)
     else
         let s:channel_handlers[a:channel].log .= a:txt
@@ -259,7 +259,8 @@ function! sw#server#execute_sql(sql, ...)
 endfunction
 
 function s:trigger_event(channel, event, args)
-    if s:channel_handlers[a:channel].background
+    let key = sw#find_channel(s:channel_handlers, a:channel)
+    if key != '' && s:channel_handlers[key].background && a:event != 'exit'
         return
     endif
     if has_key(s:events, a:event)
@@ -302,13 +303,14 @@ function! sw#server#disconnect_buffer(...)
     endif
     let key = substitute(channel, '\v^channel ([0-9]+).*$', 'channel \1 open', 'g')
     if has_key(s:channel_handlers, key)
+        call s:trigger_event(channel, 'exit', {'channel': key})
         unlet s:channel_handlers[key]
     endif
     call s:init_timer()
 
-    if exists('g:sw_airline_support') && g:sw_airline_support == 1
-        call airline#update_statusline()
-    endif
+    ""if exists('g:sw_airline_support') && g:sw_airline_support == 1
+    ""    call airline#update_statusline()
+    ""endif
 endfunction
 
 function! sw#server#kill_statement(...)

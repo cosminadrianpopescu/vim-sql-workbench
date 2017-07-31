@@ -35,3 +35,10 @@ function! airline#extensions#sw#apply(...)
     let g:airline_section_c = s:airline_section_c
   endif
 endfunction
+
+function! airline#extensions#sw#on_exit(channel)
+  call airline#update_statusline()
+endfunction
+
+
+call sw#server#add_event('exit', 'airline#extensions#sw#on_exit')
