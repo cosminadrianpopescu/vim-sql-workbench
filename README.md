@@ -11,7 +11,7 @@ it, here is the quick start:
 
 *Running sql queries against a DBMS*:
 
-* set the `g:sw_config_dir` and `g:sw_exe` variables
+* set the `g:sw_config_dir`, `g:sw_exe` and `g:sw_cache` variables
 * open your sql buffer
 * if you have `CtrlP` installed you can do `CtrlP` and then select `SQL
   Workbench profiles` and choose your profile
@@ -1127,8 +1127,8 @@ and
   which means open with vim `edit` command
 * `g:sw_tab_switches_between_bottom_panels`: if set to true, then clicking tab
   in a db explorer will switch between the bottom panels
-* `g:sw_autocomplete_cache_dir`: the location where the autocomplete
-  information is saved. You'll need to set it on Windows to work. 
+* `g:sw_cache`: the location where the cached data is going to be saved
+  (autocomplete data, profiles data etc.)
 * `g:sw_switch_to_results_tab`: If true, then switch to the results buffer
   after executting a query
 * `g:sw_highlight_resultsets`: If true, highlight the resultsets headers

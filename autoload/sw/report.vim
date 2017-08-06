@@ -15,7 +15,7 @@ function! sw#report#get(profile)
 endfunction
 
 function! s:get_name(profile)
-    return g:sw_autocomplete_cache_dir . '/' . substitute(a:profile, '\v\', '-', 'g')
+    return g:sw_cache . '/' . substitute(a:profile, '\v\', '-', 'g')
 endfunction
 
 function! s:get_report(profile)

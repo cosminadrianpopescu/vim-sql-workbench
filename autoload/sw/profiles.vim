@@ -1,5 +1,5 @@
 function! s:get_name()
-    return g:sw_autocomplete_cache_dir . '/' . 'profiles.vim'
+    return g:sw_cache . '/' . 'profiles.vim'
 endfunction
 
 function! sw#profiles#update(channel)
@@ -25,6 +25,9 @@ function! sw#profiles#about(profile, txt)
 endfunction
 
 function! sw#profiles#finish(profile, txt)
+    if !(a:txt =~ 'XSLT transformation.*finished successfully')
+        call sw#display_error("There was a problem fetching the profiles for Sql Workbench (maybe the g:sw_cache) variable is not set?")
+    endif
 endfunction
 
 function! sw#profiles#get()

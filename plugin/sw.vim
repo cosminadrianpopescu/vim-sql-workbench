@@ -65,8 +65,8 @@ if !exists('g:sw_search_default_compare_types')
     let g:sw_search_default_compare_types = 'contains'
 endif
 
-if !exists('g:sw_autocomplete_cache_dir')
-    let g:sw_autocomplete_cache_dir = $HOME . '/.cache/sw'
+if !exists('g:cache')
+    let g:sw_cache = $HOME . '/.cache/sw'
 endif
 
 if (!exists('g:sw_delimiter'))

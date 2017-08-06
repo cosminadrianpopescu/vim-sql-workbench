@@ -695,7 +695,7 @@ endfunction
 
 function! sw#autocomplete#complete_cache_name(ArgLead, CmdLine, CursorPos)
     let words = split('^' . a:CmdLine, '\v\s+')
-    let files = split(globpath(g:sw_autocomplete_cache_dir, '*'), "\n")
+    let files = split(globpath(g:sw_cache, '*'), "\n")
     let result = []
     for file in files
         let f = substitute(file, '\v\c^.*\/([^\/\.]+)\.?.*$', '\1', 'g')
