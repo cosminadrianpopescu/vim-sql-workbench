@@ -539,6 +539,8 @@ function! sw#script_path()
         let result = g:sw_plugin_path
     endif
 
+    let result .= (result =~ '\v\/$' ? '' : '/')
+
     return result
 endfunction
 

@@ -12,6 +12,9 @@ it, here is the quick start:
 *Running sql queries against a DBMS*:
 
 * set the `g:sw_config_dir`, `g:sw_exe` and `g:sw_cache` variables
+* for `cygwin` environments, please also set the `g:sw_plugin_path` variable
+  (this should point to the installation directory of the plugin). For
+  example: `c:/Users/cosmin/.vim/bundle/vim-sql-workbench`
 * open your sql buffer
 * if you have `CtrlP` installed you can do `CtrlP` and then select `SQL
   Workbench profiles` and choose your profile
@@ -1159,6 +1162,8 @@ and
   use `SWSqlWipeoutResultsSets` command.
 * `g:sw_config_dir`: the config dir of the `SQL Workbench/J` (works only with
   build 121.4 and more)
+* `g:sw_plugin_path`: for `cygwin` environments: specify the plugin
+  installation path (for example `c:/Users/cosmin/.vim/bundle/vim-sql-workbench`)
 
 Screen shots
 ========================================
