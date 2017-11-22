@@ -29,7 +29,9 @@ let b:schema_report = {}
         let b:schema_report['<xsl:value-of select="$table"/>']['columns']['<xsl:value-of select="$column"/>'] = {}
         let b:schema_report['<xsl:value-of select="$table"/>']['columns']['<xsl:value-of select="$column"/>']['name'] = '<xsl:value-of select="@name"/>'
         let b:schema_report['<xsl:value-of select="$table"/>']['columns']['<xsl:value-of select="$column"/>']['type'] = <xsl:value-of select="./java-sql-type"/>
+        let b:schema_report['<xsl:value-of select="$table"/>']['columns']['<xsl:value-of select="$column"/>']['dbms-type'] = "<xsl:value-of select="./dbms-data-type"/>"
         let b:schema_report['<xsl:value-of select="$table"/>']['columns']['<xsl:value-of select="$column"/>']['primary-key'] = <xsl:call-template name="boolean"><xsl:with-param name="value" select="./primary-key"/></xsl:call-template>
+        let b:schema_report['<xsl:value-of select="$table"/>']['columns']['<xsl:value-of select="$column"/>']['nullable'] = <xsl:call-template name="boolean"><xsl:with-param name="value" select="./nullable"/></xsl:call-template>
         let b:schema_report['<xsl:value-of select="$table"/>']['columns']['<xsl:value-of select="$column"/>']['references'] = {}
         <xsl:for-each select="references">
             let b:schema_report['<xsl:value-of select="$table"/>']['columns']['<xsl:value-of select="$column"/>']['references']['schema'] = '<xsl:value-of select="./table-schema"/>'

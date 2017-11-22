@@ -153,6 +153,10 @@ if !exists('g:sw_sql_name_result_tab')
     let g:sw_sql_name_result_tab = 1
 endif
 
+if !exists('g:sw_prefer_sql_over_macro')
+    let g:sw_prefer_sql_over_macro = 0
+endif
+
 "if !exists('g:sw_overwrite_current_command')
 "    let g:sw_overwrite_current_command = 0
 "endif
@@ -213,7 +217,6 @@ command! -nargs=0 SWSqlGetSqlCount call sw#sqlwindow#get_count(sw#sqlwindow#extr
 command! -nargs=0 SWSqlGetObjRows call sw#sqlwindow#get_count(expand('<cword>'))
 command! -nargs=0 SWSqlShowActiveConnections echo sw#server#get_active_connections()
 command! -nargs=0 SWSqlShowLog call sw#sqlwindow#show_current_buffer_log()
-command! -nargs=* SWSqlExecuteMacro call sw#sqlwindow#execute_macro(<f-args>)
 command! -nargs=0 SWSqlShowLastResultset call sw#sqlwindow#open_resulset_window()
 command! SWSqlToggleMessages call sw#sqlwindow#toggle_messages()
 command! SWSqlToggleFormDisplay call sw#sqlwindow#toggle_display()
@@ -229,14 +232,16 @@ command! -nargs=+ SWSearchData call sw#search#data(<f-args>)
 command! SWSearchDataAdvanced call sw#search#data()
 command! -nargs=1 SWSearchDataDefaults call sw#search#data_defaults(<f-args>)
 command! -nargs=0 SWSqlShowAllColumns call sw#sqlwindow#show_all_columns()
-command! -nargs=1 -complete=customlist,sw#sqlwindow#complete_columns SWSqlShowOnlyColumn call sw#sqlwindow#show_only_column(<f-args>)
 command! -nargs=+ -complete=customlist,sw#sqlwindow#complete_columns SWSqlShowOnlyColumns call sw#sqlwindow#show_only_columns([<f-args>])
-command! -nargs=1 -complete=customlist,sw#sqlwindow#complete_columns SWSqlShowColumn call sw#sqlwindow#show_column(<f-args>, 1)
+command! -nargs=1 -complete=customlist,sw#sqlwindow#complete_columns SWSqlShowColumn call sw#sqlwindow#show_column(<f-args>)
 command! -nargs=1 -complete=customlist,sw#sqlwindow#complete_columns SWSqlHideColumn call sw#sqlwindow#hide_column(<f-args>, 1)
-command! -nargs=1 -complete=customlist,sw#sqlwindow#complete_columns SWSqlForeignKey call sw#sqlwindow#go_to_ref(<f-args>)
-command! -nargs=1 -complete=customlist,sw#sqlwindow#complete_columns SWSqlFilterColumn call sw#sqlwindow#filter_column(<f-args>)
-command! -nargs=1 -complete=customlist,sw#sqlwindow#complete_columns SWSqlUnfilterColumn call sw#sqlwindow#un_filter_column(<f-args>)
-command! -nargs=0 SWSqlRemoveAllFilters call sw#sqlwindow#remove_all_filters()
+command! -nargs=? -complete=customlist,sw#sqlwindow#complete_refs SWSqlReferences call sw#sqlwindow#go_to_ref('SWSqlReferences', <f-args>)
+command! -nargs=? -complete=customlist,sw#sqlwindow#complete_refs SWSqlReferencedBy call sw#sqlwindow#go_to_ref('SWSqlReferencedBy', <f-args>)
+command! -nargs=1 -complete=customlist,sw#sqlwindow#complete_columns SWSqlFilter call sw#sqlwindow#filter_with_sql(<f-args>)
+command! -nargs=0 SWSqlUnFilter call sw#sqlwindow#remove_all_filters()
+command! -bang -nargs=+ -complete=customlist,sw#sqlwindow#complete_insert SWSqlGenerateInsert call sw#sqlwindow#generate_insert([<f-args>], <bang>0)
+command! -nargs=0 SWSqlGetMacroSql call sw#to_clipboard(sw#sqlwindow#get_macro_sql(expand('<cword>')))
+command! -nargs=0 SWSqlInsertMatch call sw#sqlwindow#match()
 command! -bang -nargs=0 SWSqlWipeoutResultsSets call sw#sqlwindow#wipeout_resultsets(<bang>0)
 
 command! -nargs=+ -complete=customlist,sw#autocomplete_profile SWServerStart call sw#server#run(<f-args>)
@@ -246,9 +251,6 @@ augroup sw
 autocmd sw BufDelete,BufWipeout * call sw#session#sync()
 autocmd sw SessionLoadPost * call sw#session#restore()
 autocmd sw VimEnter * call sw#profiles#update('')
-""autocmd sw BufEnter * call sw#sqlwindow#close_all_result_sets()
-""autocmd sw BufEnter * call sw#session#check()
-""autocmd sw TabEnter * call sw#dbexplorer#restore_from_session()
 
 call sw#server#add_event('profile_changed', 'sw#report#profile_changed')
 call sw#server#add_event('new_instance', 'sw#profiles#update')

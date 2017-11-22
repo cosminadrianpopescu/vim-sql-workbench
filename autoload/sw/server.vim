@@ -355,7 +355,7 @@ function! sw#server#get_buffer_url(buffer)
 endfunction
 
 function! sw#server#get_buffer_profile(buffer)
-    return s:get_channel_handler_prop(a:buffer, 'current_profile')
+    return s:get_channel_handler_prop(fnamemodify(a:buffer, ':p'), 'current_profile')
 endfunction
 
 function! sw#server#get_active_connections()

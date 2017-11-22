@@ -21,6 +21,7 @@ let s:pattern_resultset_title = '\v^[\=]SQL ([0-9]+)'
 let s:pattern_ignore_line = '\v\c^#IGNORE#$'
 let s:script_path = sw#script_path()
 let g:sw_last_resultset = []
+let s:pattern_columns_doubled = '\(([^\)]+)\)$'
 
 function! s:check_sql_buffer()
     if (!exists('b:sw_channel'))
@@ -228,7 +229,7 @@ function! s:get_n_resultset()
 endfunction
 
 function! s:get_idx(idx, n)
-    let n = s:get_n_resultset()
+    ""let n = s:get_n_resultset()
     let idx = a:idx
 
     if !(idx =~ '\v^[0-9]+$')
@@ -247,7 +248,7 @@ function! s:get_column(column, n)
     return column
 endfunction
 
-function! sw#sqlwindow#show_column(idx, show_results)
+function! sw#sqlwindow#show_column(idx)
     let n = s:get_n_resultset()
     if (n == -1)
         return
@@ -260,13 +261,10 @@ function! sw#sqlwindow#show_column(idx, show_results)
         call remove(b:resultsets[n].hidden_columns, idx)
     endif
 
-    
-    if a:show_results
-        call s:display_resultsets(1)
-    endif
+    call sw#sqlwindow#refresh_resultset()
 endfunction
 
-function! sw#sqlwindow#hide_column(idx, show_results)
+function! sw#sqlwindow#hide_column(idx, do_display)
     let n = s:get_n_resultset()
     if (n == -1)
         return
@@ -274,7 +272,7 @@ function! sw#sqlwindow#hide_column(idx, show_results)
     
     let idx = s:get_idx(a:idx, n)
 
-    let n_columns = len(split(b:resultsets[n].lines[b:resultsets[n].resultset_start], '+'))
+    let n_columns = len(b:resultsets[n].header)
     if idx < 0 || idx >= n_columns
         call sw#display_error("The index is out of range")
         return
@@ -288,70 +286,127 @@ function! sw#sqlwindow#hide_column(idx, show_results)
     call add(b:resultsets[n].hidden_columns, idx)
     call sort(b:resultsets[n].hidden_columns)
 
-    if a:show_results
-        call s:display_resultsets(1)
+    if a:do_display
+        call sw#sqlwindow#refresh_resultset()
     endif
 endfunction
 
-function! sw#sqlwindow#unfilter_column(column)
+function! s:select_option(values, prompt, not_found_msg)
+    let values = [a:prompt]
+    let x = 1
+    for v in a:values
+        call add(values, x . '. ' . v)
+        let x += 1
+    endfor
+
+    if len(values) == 1
+        call sw#display_error(a:not_found_msg)
+        return ""
+    endif
+
+    if len(values) > 2
+        let idx = 0
+        while idx < 1 || idx >= len(values)
+            let idx = inputlist(values)
+        endwhile
+    endif
+
+    if len(values) == 2
+        let idx = 1
+    endif
+
+    let pattern = '\v^[0-9]+\. (.*)$'
+    return substitute(values[idx], pattern, '\1', 'g')
+endfunction
+
+function! sw#sqlwindow#go_to_ref(cmd, ...)
+    let rel = a:0 ? a:1 : ''
+    let pattern = '\v^([^\(]+)\(([^\)]+)\)\=([^\(]+)\(([^\)]+)\)$'
+    if rel == ''
+        let rel = s:select_option(sw#sqlwindow#complete_refs('', a:cmd, 0), 'Please select a reference', 'There were no references for the given select')
+        if !(rel =~ pattern)
+            return
+        endif
+    endif
+    if !(rel =~ pattern)
+        call sw#display_error("The reference is not in the correct format: tbl(column)=dest_tbl(column)")
+        return 
+    endif
+
     let n = s:get_n_resultset()
     if n == -1
         return
     endif
 
-    let column = s:get_column(a:column, n)
-    unlet b:resultsets[n].filters[column]
+    let b = sw#get_buffer_from_resultset(b:resultsets[n].channel)
 
-    call s:display_resultsets(1)
-endfunction
-
-function! sw#sqlwindow#go_to_ref(column)
-    let n = s:get_n_resultset()
-    if n == -1
+    if !has_key(b, 'bufnr')
+        call sw#display_error("Could not get the corresponding buffer of this resultset")
         return
     endif
+    
+    let profile = sw#server#get_buffer_profile(bufname(b.bufnr))
+    let table = substitute(rel, pattern, '\1', 'g')
+    let source_column = substitute(rel, pattern, '\2', 'g')
 
-    let sql = b:resultsets[n].sql
-    let table = substitute(sw#autocomplete#get_tables_part(sql, 'select')[0], '\v;[ \n\t\r]*$', '', 'g')
-
-    let b = s:get_buffer_from_resultset(b:resultsets[n].channel)
-    if has_key(b, 'bufnr')
-        let profile = sw#server#get_buffer_profile(fnamemodify(bufname(b.bufnr), ':p'))
-        let new_sql = sw#report#get_foreign_key_sql(profile, table, a:column)
-        if new_sql == ''
-            call sw#display_error("Could not identify the foreign key")
-            return 
-        endif
-        let column = s:get_column(a:column, n)
-        if !has_key(b:resultsets[n], 'columns')
-            let b:resultsets[n].columns = s:split_into_columns(b:resultsets[n])
-        endif
-        let col_idx = index(b:resultsets[n].header, a:column)
-        let resultset_start = s:get_resultset_start()
-        let line = line('.') - resultset_start - 1
-        let value = sw#trim(b:resultsets[n].columns[line + 2][col_idx + 1])
-        let new_sql = substitute(new_sql, '#value#', value, 'g')
-        let b = s:get_buffer_from_resultset(b:resultsets[n].channel)
-        if has_key(b, 'name')
-            let file = b.name
-        endif
-        call s:execute_sql_from_resultset(b:resultsets[n], s:add_title_to_sql(new_sql . ';'))
+    let new_sql = sw#report#get_references_sql(profile, table, source_column)
+    if new_sql == ''
+        call sw#display_error("Could not build the sql")
+        return 
     endif
+    let column = s:get_column(substitute(rel, pattern, '\4', 'g'), n)
+    if !has_key(b:resultsets[n], 'columns')
+        let b:resultsets[n].columns = s:split_into_columns(b:resultsets[n])
+    endif
+    let col_idx = index(map(b:resultsets[n].header, 'tolower(v:val)'), tolower(column))
+    if col_idx == -1
+        call sw#display_error("Could not identify the source column in the resultset. Probably your result set does not include the foreign key. If you want to follow a reference, you need to include in the sql the foreign key.")
+        return 
+    endif
+    let resultset_start = s:get_resultset_start()
+    let line = line('.') - resultset_start - 1
+    let value = sw#trim(b:resultsets[n].columns[line + 2][col_idx + 1])
+    let new_sql = substitute(new_sql, '#value#', value, 'g')
+    let b = sw#get_buffer_from_resultset(b:resultsets[n].channel)
+    if has_key(b, 'name')
+        let file = b.name
+    endif
+    call s:execute_sql_from_resultset(b:resultsets[n], s:add_title_to_sql(new_sql . ';'))
 endfunction
 
-function! sw#sqlwindow#filter_column(column)
-    let n = s:get_n_resultset()
-    if n == -1
-        return
+function! s:do_search(arr, pattern)
+    for i in range(len(a:arr))
+        if a:arr[i] =~ a:pattern
+            return i
+        endif
+    endfor
+
+    return -1
+endfunction
+
+function! sw#sqlwindow#find_cursor(insert_parts, search)
+    let pattern = '\c' . a:search
+    let idx = s:do_search(a:insert_parts.fields, pattern)
+    if idx != -1
+        return 'f' . idx
+    endif
+    let idx = s:do_search(a:insert_parts.values, pattern)
+    if idx != -1
+        return 'v' . idx
     endif
 
-    let filter = input('Please input the filter value: ')
-    if filter != ''
-        let column = s:get_column(a:column, n)
-        let b:resultsets[n].filters[column] = filter
+    for which in ['strings', 'expressions', 'subqueries']
+        for el in a:insert_parts[which]
+            let key = keys(el)[0]
+            " The keys for strings are not in the format '#m<n>#'
+            let _key = !(key =~ '\v\c^#[a-z0-9]+#$') ? '#' . key . '#' : key
+            if el[key] =~ pattern
+                return sw#sqlwindow#find_cursor(a:insert_parts, _key)
+            endif
+        endfor
+    endfor
 
-        call s:display_resultsets(1)
-    endif
+    return ''
 endfunction
 
 function! sw#sqlwindow#remove_all_filters()
@@ -360,8 +415,8 @@ function! sw#sqlwindow#remove_all_filters()
         return
     endif
 
-    let b:resultsets[n].filters = {}
-    call s:display_resultsets(1)
+    let b:resultsets[n].where = ""
+    call sw#sqlwindow#refresh_resultset()
 endfunction
 
 function! sw#sqlwindow#show_all_columns()
@@ -370,25 +425,106 @@ function! sw#sqlwindow#show_all_columns()
         return
     endif
     let b:resultsets[n].hidden_columns = []
-    call s:display_resultsets(1)
+    call sw#sqlwindow#refresh_resultset()
 endfunction
 
-function! sw#sqlwindow#show_only_column(column)
-    let n = s:get_n_resultset()
-    if (n == -1)
-        return
-    endif
-    if index(b:resultsets[n].header, a:column) == -1
-        call sw#display_error("The column does not exists")
-        return
-    endif
-    for column in b:resultsets[n].header
-        if column != a:column
-            call sw#sqlwindow#hide_column(column, 0)
+function! s:get_complete_result(values, a)
+    let result = []
+
+    for v in a:values
+        if v =~ '^' . a:a
+            call add(result, v)
         endif
     endfor
 
-    call s:display_resultsets(1)
+    return result
+endfunction
+
+function! s:get_from_part(sql)
+    let sql = substitute(s:eliminate_comments(a:sql), '\v[\r\n]', ' ', 'g')
+    return substitute(sql, '\v^[ ]*select(.{-})\sfrom\s.*$', '\1', 'g')
+endfunction
+
+function! s:add_complete_field(table, idx)
+    let field = a:table.fields[a:idx]
+    let name = has_key(a:table, 'alias') ? a:table.alias : a:table.table
+    unlet a:table.fields[a:idx]
+    return field . '(' . name . ')'
+endfunction
+
+" Param: r The resultset
+function! s:separate_columns(r)
+    let counts = {}
+    let tables = copy(sw#autocomplete#get_tables(a:r.sql_original, []))
+
+    for table in tables
+        for field in table.fields
+            if !has_key(counts, field)
+                let counts[field] = 0
+            endif
+
+            let counts[field] += 1
+        endfor
+    endfor
+
+    for table in tables
+        let table.fields = copy(table.fields)
+    endfor
+    let result = []
+    let from_part = s:get_from_part(a:r.sql_original)
+    let identifiers = split(from_part, '\v[ \t,]')
+
+    for column in a:r.header
+        if !has_key(counts, column)
+            continue
+        endif
+        if counts[column] == 1
+            call add(result, column)
+            continue
+        endif
+
+        if from_part =~ '\v^[ ]*\*[ ]*$'
+            for table in tables
+                let idx = index(table.fields, column)
+                if idx != -1
+                    call add(result, s:add_complete_field(table, idx))
+                    break
+                endif
+            endfor
+        else
+            let processed = 0
+            for id in identifiers
+                if id == ''
+                    continue
+                endif
+                let pattern = '\v^([^\.]+)\.(.*)$'
+                let tbl = substitute(id, pattern, '\1', 'g')
+                let fld = substitute(id, pattern, '\2', 'g')
+
+                if fld != column && fld != '*'
+                    continue
+                endif
+
+                for table in tables
+                    if (has_key(table, 'alias') && table.alias != tbl) && table.table != tbl
+                        continue
+                    endif
+                    let idx = index(table.fields, column)
+                    if idx != -1
+                        call add(result, s:add_complete_field(table, idx))
+                        let processed = 1
+                        break
+                    endif
+                endfor
+
+                if processed
+                    break
+                endif
+            endfor
+        endif
+    endfor
+
+    return result
 endfunction
 
 function! sw#sqlwindow#complete_columns(ArgLead, CmdLine, CursorPos)
@@ -408,11 +544,71 @@ function! sw#sqlwindow#complete_columns(ArgLead, CmdLine, CursorPos)
     return result
 endfunction
 
+function! sw#sqlwindow#complete_refs(a, cmd, pos)
+    let n = s:get_n_resultset()
+    if n == -1
+        return []
+    endif
+
+    let sql = b:resultsets[n].sql_original
+
+    " We try to see the complete options (references or referenced by)
+    let b = sw#get_buffer_from_resultset(b:resultsets[n].channel)
+
+    if has_key(b, 'bufnr')
+        let tables = sw#autocomplete#get_tables(sql, [], b.name)
+        " We check all available tables in the given query
+        let available_tables = []
+        for table in tables
+            call add(available_tables, table.table)
+        endfor
+
+        " We check to see if we have a referenced or referenced by
+        let pattern = '\v^SWSql[^ ]*(References|ReferencedBy).*$'
+        let which = substitute(a:cmd, pattern, '\1', 'g')
+
+        " Since we are in the result set, we find the profile in the 
+        " buffer where the sql has been executed
+        let profile = sw#server#get_buffer_profile(bufname(b.bufnr))
+
+        let result = []
+        " For each available table
+        for table in available_tables
+            " We get the references or tables referencing in the current query
+            let ref = which == 'References' ? sw#report#get_references(profile, table, 1) : sw#report#get_referenced_by(profile, table, 1)
+            let key = which == 'References' ? 'references' : 'ref-by'
+
+            " And for each reference, we check the source and referenced
+            " columns
+            if !has_key(ref, table)
+                continue
+            endif
+            for k in keys(ref[table][key])
+                let r = ref[table][key][k]
+                " If we have a references, then we want source-column = ref-column
+                " Otherwise, we want ref-column = source-column
+                let link = k . '(' . r['referenced-columns'] . ')=' . table . '(' . r['source-columns'] . ')'
+                " If it's a complex query, we want to avoid dupplicates
+                if index(result, link) == -1
+                    call add(result, link)
+                endif
+            endfor
+        endfor
+
+        " Filter the results (maybe we already have a query)
+        return s:get_complete_result(result, a:a)
+    endif
+
+    return []
+endfunction
+
 function! sw#sqlwindow#show_only_columns(columns)
     let n = s:get_n_resultset()
     if n == -1
         return
     endif
+
+    let b:resultsets[n].hidden_columns = []
 
     for column in b:resultsets[n].header
         if index(a:columns, column) == -1
@@ -421,6 +617,9 @@ function! sw#sqlwindow#show_only_columns(columns)
     endfor
 
     call s:display_resultsets(1)
+
+    let b:resultsets[n].visible_columns = a:columns
+    call sw#sqlwindow#refresh_resultset()
 endfunction
 
 function! sw#sqlwindow#display_as_form()
@@ -590,6 +789,7 @@ function! s:open_resultset_window()
         if !s_below
             set nosplitbelow
         endif
+        let b:sw_is_resultset = 1
     endif
 
     call sw#goto_window(name)
@@ -625,7 +825,7 @@ function! s:split_into_columns(resultset)
     return result
 endfunction
 
-function! s:print_line(line_idx, n_resultset, do_filter)
+function! s:print_line(line_idx, n_resultset)
     let resultset = b:resultsets[a:n_resultset]
     let pattern_empty_line = '\v^[ \t\s\|\:]*$'
 
@@ -638,53 +838,13 @@ function! s:print_line(line_idx, n_resultset, do_filter)
     let delimiter = line =~ sw#get_pattern('pattern_resultset_start') ? '+' : '|'
     let result = ''
 
-    if (len(resultset.hidden_columns) > 0 || len(resultset.filters) > 0)
+    if len(resultset.hidden_columns) > 0
         if !exists('resultset.columns')
             let resultset.columns = s:split_into_columns(resultset)
         endif
-    else
-        return line
     endif
 
-    if len(resultset.columns[a:line_idx]) <= 1
-        return line
-    endif
-
-    let i = 1
-    while i < len(resultset.columns[a:line_idx])
-        if a:do_filter
-            let column = s:get_column(i - 1, a:n_resultset)
-            if has_key(resultset.filters, column)
-                let filter = resultset.filters[column]
-                let filter_in = 1
-                if filter =~ '\v^[ \t\s]*[\>\<\=]{1,2}'
-                    try
-                        let filter_in = eval(resultset.columns[a:line_idx][i] . filter)
-                    catch
-                        let filter_in = 0
-                    endtry
-                else
-                    let filter_in = substitute(resultset.columns[a:line_idx][i], '\v^[ \t\s]*(.{-})[ \t\s]*$', '\1', 'g') =~ filter
-                endif
-                if !filter_in
-                    return '#IGNORE#'
-                endif
-            endif
-        endif
-        if index(resultset.hidden_columns, i - 1) == -1 && a:line_idx >= resultset.resultset_start - 1
-            let result .= resultset.columns[a:line_idx][i]
-            if i - 1 < len(resultset.columns[a:line_idx]) - 1
-                let result .= delimiter
-            endif
-        endif
-
-        let i += 1
-    endwhile
-
-    if result =~ pattern_empty_line
-        let result = '#IGNORE#'
-    endif
-    return substitute(result, '\v^(.*)[+|]$', '\1', 'g')
+    return line
 endfunction
 
 function! s:add_hidden_columns(n)
@@ -697,12 +857,7 @@ function! s:add_hidden_columns(n)
 endfunction
 
 function! s:add_filters(n)
-    let result = ''
-    for column in keys(b:resultsets[a:n].filters)
-        let result .= (result == '' ? '' : ', ') . column . ' ' . b:resultsets[a:n].filters[column]
-    endfor
-
-    return result
+    return b:resultsets[a:n].where
 endfunction
 
 function! s:output_content(content)
@@ -722,7 +877,7 @@ function! s:build_header(n)
         let header .= "\n(Hidden columns: " . hidden_columns . ")"
     endif
     let filters = s:add_filters(len(b:resultsets) - n)
-    if (filters != '')
+    if filters != ''
         let header .= "\n(Filters: " . filters . ")"
     endif
 
@@ -750,7 +905,7 @@ function! s:display_resultsets_continous()
             endif
             let i = 0
             for line in resultset.lines
-                let row = s:print_line(i, len(b:resultsets) - n, i > resultset.resultset_start)
+                let row = s:print_line(i, len(b:resultsets) - n)
                 if !(row =~ s:pattern_ignore_line)
                     let lines .= row . "\n"
                 endif
@@ -800,11 +955,16 @@ function! s:add_new_resultset(channel, id)
         let query = ''
     endif
     let n = s:get_next_resultset()
-    let result = {'messages': [], 'lines': [], 'hidden_columns': [], 'resultset_start': 0, 'header': [], 'filters': {}, 'title': '', 'rows': 0, 'channel': a:channel, 'sql': query, 'id': a:id, 'wait_refresh': 0}
+    let result = {'messages': [], 'lines': [], 'hidden_columns': [], 'resultset_start': 0, 'header': [], 'filters': {}, 'title': '', 'rows': 0, 'channel': a:channel, 'sql': query, 'id': a:id, 'wait_refresh': 0, 'sql_original': query, 'where': ''}
     if n == len(b:resultsets)
         call add(b:resultsets, result)
         let s:new_resultset = 1
     else
+        " Preserve the sql_original and the where values
+        let result.sql_original = b:resultsets[n].sql_original
+        let result.where = b:resultsets[n].where
+        let result.hidden_columns = b:resultsets[n].hidden_columns
+        let result.header = b:resultsets[n].header
         let s:new_resultset = 0
         let b:resultsets[n] = result
     endif
@@ -814,7 +974,8 @@ endfunction
 
 function! s:get_next_resultset()
     for i in range(len(b:resultsets))
-        if b:resultsets[i]['wait_refresh'] && b:resultsets[i]['sql'] == g:sw_last_sql_query
+        if b:resultsets[i]['wait_refresh'] && (b:resultsets[i]['sql'] == g:sw_last_sql_query || b:resultsets[i]['sql_original'] == g:sw_last_sql_query)
+            let b:resultsets[i].wait_refresh = 0
             return i
         endif
     endfor
@@ -879,11 +1040,15 @@ function! s:process_result(channel, result)
         let i = i + 1
     endwhile
 
-    if len(b:resultsets[n].lines) > 0
+    if len(b:resultsets[n].lines) > 0 && s:new_resultset
         let header = split(b:resultsets[n].lines[b:resultsets[n].resultset_start - 1], '|')
         for h in header
             call add(b:resultsets[n].header, substitute(h, '\v^[ ]*([^ ].*[^ ])[ ]*$', '\1', 'g'))
         endfor
+
+        " Separates the identical columns by adding at the end of the column
+        " the name of table or subquery from where the column is extracted
+        let b:resultsets[n].header = s:separate_columns(b:resultsets[n])
     endif
 
     let g:sw_last_resultset = b:resultsets
@@ -910,6 +1075,11 @@ function! s:add_title_to_sql(sql)
 endfunction
 
 function! sw#sqlwindow#execute_sql(sql)
+    let macros = sw#cache_get('macros')
+    if string(macros) != '{}' && has_key(macros, substitute(a:sql, '\v[\r\n;]', '\1', 'g'))
+        call sw#sqlwindow#execute_macro(a:sql)
+        return
+    endif
     let w:auto_added1 = "-- auto\n"
     let w:auto_added2 = "-- end auto\n"
 
@@ -921,13 +1091,15 @@ function! sw#sqlwindow#execute_sql(sql)
     call s:do_execute_sql(_sql)
 endfunction
 
-function! sw#sqlwindow#execute_macro(...)
-    if (a:0)
-        let macro = a:1
-    else
-        let macro = sw#sqlwindow#extract_current_sql()
+function! sw#sqlwindow#execute_macro(macro)
+    let sql = g:sw_prefer_sql_over_macro ? sw#sqlwindow#get_macro_sql(substitute(a:macro, '\v[\n\r;]', '', 'g')) : a:macro
+    if sql == '' || !sw#autocomplete#is_select(sql)
+        let sql = a:macro
     endif
-    call s:do_execute_sql(macro)
+    if sql != a:macro
+        let sql = substitute(s:add_title_to_sql(sql), '[ ;\n\t\r\s]*$', ';', 'g')
+    endif
+    call s:do_execute_sql(sql)
 endfunction
 
 function! sw#sqlwindow#get_object_info()
@@ -1052,19 +1224,9 @@ function! sw#sqlwindow#get_count(statement)
     call sw#sqlwindow#execute_sql(sql)
 endfunction
 
-function! s:get_buffer_from_resultset(channel)
-    for info in getbufinfo()
-        if getbufvar(info['bufnr'], 'sw_channel') == a:channel
-            return info
-        endif
-    endfor
-
-    return {}
-endfunction
-
 function! s:execute_sql_from_resultset(resultset, sql)
     let file = ''
-    let b = s:get_buffer_from_resultset(a:resultset.channel)
+    let b = sw#get_buffer_from_resultset(a:resultset.channel)
     if has_key(b, 'name')
         let file = b.name
     endif
@@ -1078,16 +1240,59 @@ function! s:execute_sql_from_resultset(resultset, sql)
     endif
 endfunction
 
+" Gets the columns part for an sql, considering the doubled columns. 
+" This means the the columns which appear 2 times in the resultset, will
+" be returnes as table.c as c__table (if full param is true)
+" or as c__table if full param is false
+function! s:get_columns_as_string(columns, full)
+    let pattern = s:pattern_columns_doubled
+    return join(map(copy(a:columns), "substitute(v:val, '\\v^(.{-})' . pattern, (a:full ? '\\2.\\1 as ' : '') . '\\1__\\2', 'g')"), ', ')
+endfunction
+
+" Returns the original sql expanding the * in the from part if
+" necessary (if in the resultset we have fields with the same name)
+function! s:get_original_sql(r)
+    let columns = a:r.header
+    let pattern = s:pattern_columns_doubled
+    if len(filter(copy(columns), "v:val =~ '\\v' . pattern")) == 0
+        return a:r.sql_original
+    endif
+
+    let fields_part = s:get_columns_as_string(columns, 1)
+    let from_part = s:get_from_part(a:r.sql_original)
+
+    return substitute(a:r.sql_original, '\V' . from_part, ' ' . fields_part, 'g')
+endfunction
+
+" In the string s (which can be the where from a filter or the columns
+" part from a show only columns), we replace the '(tbl)' part with
+" '__tbl'
+function! s:identify_columns(s, alias)
+    return substitute(a:s, '\v([^ \s\t]+)\(([^\)]+)\)', '\1__\2' . (a:alias ? ' \1' : ''), 'g')
+endfunction
+
 function! sw#sqlwindow#refresh_resultset()
     let n = s:get_n_resultset()
-    let sql = b:resultsets[n]['sql']
-    let id = b:resultsets[n]['id']
+    let r = b:resultsets[n]
+    let sql = r.where == '' && len(r.hidden_columns) == 0 ? r['sql_original'] : s:get_original_sql(r)
+    if r['where'] != ''
+        let sql = "select * from (" . s:eliminate_comments(sql) . ") subquery where " . s:identify_columns(r.where, 0) . ';'
+    endif
+    if len(r.hidden_columns) > 0
+        let columns = join(filter(copy(r.header), 'index(r.hidden_columns, v:key) == -1'), ', ')
+        let columns = s:identify_columns(columns, 1)
+        let sql = r.where != '' ?
+                    \ substitute(sql, '\v^select \*', 'select ' . columns, '') :
+                    \ 'select ' . columns . ' from (' . s:eliminate_comments(sql) . ') subquery;'
+    endif
+    let r.sql = sql
+    let id = r['id']
     for resultset in b:resultsets
         if resultset['id'] == id
             let resultset['wait_refresh'] = 1
         endif
     endfor
-    call s:execute_sql_from_resultset(b:resultsets[n], sql)
+    call s:execute_sql_from_resultset(r, sql)
 endfunction
 
 function! s:delete_filter(idx, val)
@@ -1128,4 +1333,161 @@ endfunction
 function! sw#sqlwindow#share_connection(buffer)
     call sw#server#share_connection(a:buffer)
     call sw#sqlwindow#open_buffer(bufname('%'), 'e')
+endfunction
+
+function! s:translate_part(input_parts, current)
+    let s = a:current
+    let pattern = '\v#(m|sq|val)([0-9]+)#'
+    while s =~ pattern
+        let matches = matchlist(s, pattern, '')
+        let key = (matches[1] == 'sq' ? 'subqueries' : (matches[1] == 'm' ? 'strings' : 'expressions'))
+        for values in a:input_parts[key]
+            " Due to inconstitencies, the key for the strings is missing the
+            " #. So, we need to add it but only for comparisons
+            " TODO: fix this (all the keys returnes by 
+            " sw#autocomplete#get_insert_parts() should be consistent)
+            let key = keys(values)[0]
+            if key == matches[0] || '#' . key . '#' == matches[0]
+                try
+                    let value = values[matches[0]]
+                catch
+                    let value = values[key]
+                endtry
+                if matches[1] == 'sq' || matches[1] == 'val'
+                    let value = '(' . value . ')'
+                endif
+                let s = s:translate_part(a:input_parts, substitute(s, '\v' . matches[0], value, 'g'))
+                break
+            endif
+        endfor
+    endwhile
+
+    return s
+endfunction
+
+function! s:display_match_result(timer)
+    echomsg "Match in insert: " . s:match_result
+endfunction
+
+function! sw#sqlwindow#match()
+    " Get the input parts
+    let input_parts = sw#autocomplete#get_insert_parts(sw#sqlwindow#extract_current_sql(1))
+    if string(input_parts) == '{}'
+        call sw#display_error('You have to set the cursor in the values part, or in the fields part')
+        retur
+    endif
+    let where = sw#sqlwindow#find_cursor(input_parts, '#cursor#')
+    if where == ''
+        call sw#display_error('Could not identify the parts in the insert')
+        return
+    endif
+    let pattern = '\v\c^(f|v)([0-9]+)$'
+
+    " If we found that we are in the fields part, check the values parts
+    " and the other way around
+    let key = substitute(where, pattern, '\1', 'g') == 'f' ? 'values' : 'fields'
+    let idx = substitute(where, pattern, '\2', 'g')
+
+    if len(input_parts[key]) <= idx
+        call sw#display_error('There is no corresponding value')
+        return
+    endif
+
+    let result = s:translate_part(input_parts, input_parts[key][idx])
+    let @/ = '\V' . substitute(result, ' ', '\\_.', 'g')
+    let s:match_result = result
+    let Func = function('s:display_match_result')
+    call timer_start(0, Func)
+endfunction
+
+function! sw#sqlwindow#complete_insert(arg, cmd, pos)
+    let parts = split(a:cmd, '\v[ \t]+')
+    if a:cmd =~ '\v $'
+        call add(parts, '')
+    endif
+    if len(parts) <= 2
+        let base = len(parts) == 1 ? '' : parts[1]
+        let objects = filter(sw#autocomplete#all_objects(base), 'v:val["menu"] == "T"')
+    else
+        let tbl = parts[1]
+        let objects = sw#autocomplete#table_fields(tbl, parts[len(parts) - 1])
+    endif
+    return map(objects, 'v:val["word"]')
+endfunction
+
+function! sw#sqlwindow#generate_insert(args, exec)
+    let profile = sw#server#get_buffer_profile(bufname('%'))
+    if profile == ''
+        call sw#display_error('You are not in an sql buffer')
+        return 
+    endif
+    let tbl = a:args[0]
+    if len(a:args) == 1
+        let fields = map(sw#autocomplete#table_fields(tbl, ''), 'v:val["word"]')
+    else
+        let fields = filter(a:args, 'v:key > 0')
+    endif
+    let sql = "insert into " . tbl . "(" . join(fields, ', ') . ") values"
+
+    let table = sw#report#get_table_info(profile, tbl)
+    if string(table) == "{}"
+        call sw#display_error("Table not found: " . tbl)
+        return 
+    endif
+    let values = ''
+
+    for field in fields
+        if !has_key(table['columns'], field)
+            call sw#display_error(field . " does not exists in " . tbl . ' table')
+            return
+        endif
+        let quote = sw#report#is_string(table['columns'][field]['type']) ? "'" : ''
+        let values .= (values == '' ? '' : ', ') . quote . '$[?' . field . ']' . quote
+    endfor
+
+    let sql .= '(' . values . ')'
+
+    call sw#to_clipboard(sql)
+
+    if a:exec
+        call sw#sqlwindow#execute_sql(sql . ';')
+    endif
+
+    let and_executed = a:exec ? ' and executed' : ''
+
+    echomsg "The following sql was saved to the clipboard" . and_executed . ":"
+    echomsg sql
+endfunction
+
+function! sw#sqlwindow#get_macro_sql(macro)
+    let macros = sw#cache_get('macros')
+    if string(macros) == "{}" || !has_key(macros, a:macro)
+        return ''
+    endif
+
+    return substitute(macros[a:macro]['sql'], '#NEWLINE#', '\n', 'g')
+endfunction
+
+function! s:eliminate_comments(sql)
+    let sql = substitute(a:sql, '\v;[ \n\r\t]*$', '', 'g')
+    let sql = substitute(sql, '\v[ \t]*--[^\n\r]*', '', 'g')
+    let sql = substitute(sql, '\v\/\*\_.{-}\*\/', '', 'g')
+
+    return sql
+endfunction
+
+function! sw#sqlwindow#filter_with_sql(where_part)
+    let n = s:get_n_resultset()
+    if n == -1
+        call sw#display_error('Could not identify the result set to filter')
+        return
+    endif
+
+    let b:resultsets[n].where = a:where_part
+
+    ""let sql = s:eliminate_comments(b:resultsets[n].sql)
+    ""let new_sql = "select * from (" . sql . ") subquery where " . a:where_part
+    ""call s:execute_sql_from_resultset(b:resultsets[n], s:add_title_to_sql(new_sql . ';'))
+
+    call sw#sqlwindow#refresh_resultset()
 endfunction

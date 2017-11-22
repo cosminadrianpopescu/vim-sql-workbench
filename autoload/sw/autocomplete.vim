@@ -19,32 +19,38 @@
 
 let s:_pattern_identifier = '((\a|_|[0-9])+|#sq[0-9]+#)'
 let s:pattern_identifier = '\v' . s:_pattern_identifier
-let s:pattern_reserved_word = '\v\c<(inner|outer|right|left|join|as|using|where|group|order|and|or|not)>'
+let s:pattern_identifier_split = '\v[, \t]'
+let s:pattern_reserved_word = '\v\c<(inner|outer|right|left|join|as|using|where|group|order|and|or|not|on)>'
 let s:pattern_subquery = '\v#sq([0-9]+)#'
 let s:pattern_expressions = '\v\c\(([\s\t ]*select)@![^\(\)]{-}\)'
 let s:script_path = sw#script_path()
 
-function! s:eliminate_sql_comments(sql)
-    let sql = sw#get_sql_canonical(a:sql)[0]
-    let sql = substitute(sql, '\v--.{-}#NEWLINE#', '#NEWLINE#', 'g')
-    let sql = substitute(sql, '\v--.{-}$', '', 'g')
-    let sql = substitute(sql, '\v\/\*.{-}\*\/', '', 'g')
-    let sql = substitute(sql, '#NEWLINE#', ' ', 'g')
-
-    return sql
-endfunction
-
 function! sw#autocomplete#sort(e1, e2)
+    if a:e1.menu == '*'
+        return -1
+    endif
+    if a:e2.menu == '*'
+        return 1
+    endif
     return a:e1.word == a:e2.word ? 0 : a:e1.word > a:e2.word ? 1 : -1
 endfunction
 
-function! sw#autocomplete#table_fields(tbl, base)
+function! sw#autocomplete#table_fields(tbl, base, ...)
+    let get_info = a:0 ? a:1 : 0
+    let profile = get_info ? sw#server#get_buffer_profile(bufname('%')) : ''
     let result = []
     let fields = s:get_cache_data_fields(a:tbl)
     if len(fields) > 0
         for field in fields
             if field =~ '^' . a:base
-                call add(result, {'word': field, 'menu': a:tbl . '.'})
+                let menu = a:tbl . '.'
+                if get_info
+                    let info = sw#report#get_field_info(profile, a:tbl, field)
+                    if string(info) != "{}"
+                        let menu = info['dbms-type'] . (!info['nullable'] ? ' (+)' : '')
+                    endif
+                endif
+                call add(result, {'word': field, 'menu': menu})
             endif
         endfor
     endif
@@ -53,16 +59,33 @@ endfunction
 
 function! sw#autocomplete#extract_current_sql()
     let sql = sw#sqlwindow#extract_current_sql(1)
-    let _sql = s:eliminate_sql_comments(sql)
-    let _sql = substitute(_sql, s:pattern_expressions, '#values#', 'g')
+    let sql = sw#eliminate_sql_comments(sql)
+    let _sql = substitute(sql, s:pattern_expressions, '#values#', 'g')
     " Check to see that we are not in a subquery
     let pattern = '\v\c(\([ \t\s]*select[^\(]*#cursor#).*\)'
     if _sql =~ pattern
         " If we are in a subquery, search where it begins.
-        let l = matchlist(sql, '\v\c(\([ \s\t]*select([^s]|s[^e]|se[^l]|sel[^e]|sele[^c]|selec[^t]|select[^\s \t])*#cursor#)', 'g')
-        if (len(l) >= 1)
+        let sql = substitute(sw#get_sql_canonical(sql)[0], '#NEWLINE#', ' ', 'g')
+        let start = stridx(tolower(sql), '#cursor#')
+        let s = ''
+        let paren = 0
+        let pattern = '\v\c^select[ \s\t]+.*$'
+        while start >= 0
+            let start -= 1
+            let c = sql[start]
+            if c == ')'
+                let paren += 1
+            endif
+            if c == '('
+                let paren -= 1
+            endif
+            let s = c . s
+            if s =~ pattern && paren == 0
+                break
+            endif
+        endwhile
+        if start >= 0
             " Get the start and end of the subquery
-            let start = sw#index_of(sql, l[1])
             let end = start + 1
             let p = 1
             while end < strlen(sql) && p > 0
@@ -75,7 +98,6 @@ function! sw#autocomplete#extract_current_sql()
                 let end = end + 1
             endwhile
 
-            let start = start + 1
             let end = end - 2
 
             let cmd = "let _sql = sql[" . start . ":" . end . "]"
@@ -133,13 +155,34 @@ function! sw#autocomplete#remove_table_from_cache(tbl)
     endif
 endfunction
 
-function! s:get_cache_tables()
-    if exists('b:autocomplete_tables')
-        return b:autocomplete_tables
+function! s:get_cache_tables(...)
+    let buffer = a:0 ? a:1 : bufname('%')
+    let info = exists('b:sw_is_resultset') && b:sw_is_resultset ? sw#get_buffer_from_resultset(b:current_channel) : getbufinfo(buffer)
+    if len(info) == 0
+        return {}
     endif
-    
+
+    " If the result comes from sw#get_buffer_from_resultset, the info
+    " is already extracted from the array
+    try 
+        let info = info[0]
+    catch
+    endtry
+
+    if has_key(info.variables, 'autocomplete_tables')
+        return info.variables.autocomplete_tables
+    endif
+
     if exists('g:sw_autocomplete_default_tables')
         return g:sw_autocomplete_default_tables
+    endif
+
+    let tables = sw#autocomplete#get_cache(info.name)
+    if len(tables) > 0
+        call setbufvar(info.name, 'autocomplete_tables', tables)
+        return tables
+    else
+        return {}
     endif
 
     return {}
@@ -167,8 +210,9 @@ function! s:get_cache_data_type(s)
     return substitute(a:s, pattern, '\1', 'g')
 endfunction
 
-function! s:get_cache_data_fields(s)
-    let cache = s:get_cache_tables()
+function! s:get_cache_data_fields(s, ...)
+    let buffer = a:0 ? a:1 : bufname('%')
+    let cache = s:get_cache_tables(buffer)
     for table in keys(cache)
         if tolower(table) == 'v#' . tolower(a:s) || tolower(table) == 't#' . tolower(a:s)
             return cache[table]
@@ -215,11 +259,14 @@ function! sw#autocomplete#all_objects(base)
     return sort(result, "sw#autocomplete#sort")
 endfunction
 
+function! sw#autocomplete#get_cache(buffer)
+    return sw#report#autocomplete_tables(sw#server#get_buffer_profile(a:buffer))
+endfunction
+
 function! sw#autocomplete#perform(findstart, base)
     " Check that the cache is alright
     if !exists('b:autocomplete_tables') && !exists('g:sw_autocomplete_default_tables')
-        let profile = sw#server#get_buffer_profile(bufname('%'))
-        let tables = sw#report#autocomplete_tables(profile)
+        let tables = sw#autocomplete#get_cache(bufname('%'))
         if len(tables) > 0
             let b:autocomplete_tables = tables
         else
@@ -267,14 +314,14 @@ function! sw#autocomplete#perform(findstart, base)
         " Otherwise, extract the current sql
         let sql = sw#autocomplete#extract_current_sql()
         " Check its type
-        call sw#session#set_buffer_variable('autocomplete_type', s:get_sql_type(s:eliminate_sql_comments(sql)))
+        let autocomplete_type = s:get_sql_type(sw#eliminate_sql_comments(sql))
         " Desc type, easy peasy
-        if (b:autocomplete_type == 'desc')
+        if (autocomplete_type == 'desc')
             return sw#autocomplete#all_objects(a:base)
             return sort(result, "sw#autocomplete#sort")
-        elseif b:autocomplete_type == 'select' || b:autocomplete_type == 'update'
+        elseif autocomplete_type == 'select' || autocomplete_type == 'update'
             " If a select, first get its tables
-            let tables = s:get_tables(sql, [])
+            let tables = sw#autocomplete#get_tables(sql, [])
             " If we returned an empty string, then no autocomplete
             if string(tables) == ""
                 return []
@@ -316,10 +363,15 @@ function! sw#autocomplete#perform(findstart, base)
                 " a subquery)
                 let sql = s:extract_subqueries(sql)[0]
 
+                let pattern = '\v\cselect.*#cursor#.*from'
+
                 " If we are between select and from or after where, then or in
                 " a using, return fields to autocomplete
-                if sql =~ '\v\cselect.*#cursor#.*from' || sql =~ '\v\c(where|group|having).*#cursor#' || sql =~ '\v\cusing[\s\t ]*\([^\)]*#cursor#' || sql =~ '\v\cupdate.*<(set|where)>.*#cursor#'
-                    let result = []
+                " If we are between select and from, then we add the all
+                " option
+                if sql =~ pattern || sql =~ '\v\c(where|group|having).*#cursor#' || sql =~ '\v\cusing[\s\t ]*\([^\)]*#cursor#' || sql =~ '\v\cupdate.*<(set|where)>.*#cursor#'
+                    let first = {'word': '', 'abbr': 'all', 'menu': '*'}
+                    let result = sql =~ pattern ? [first] : []
                     for table in tables
                         for field in table['fields']
                             let name = table['table']
@@ -335,12 +387,13 @@ function! sw#autocomplete#perform(findstart, base)
                             endif
                             " Return the matching fields of all the tables
                             if field =~ '\c^' . a:base
+                                let first.word .= ((first.word == '') ? '' : ', ') . field
                                 call add(result, {'word': field, 'menu': name . '.'})
                             endif
                         endfor
                     endfor
 
-                    if len(result) == 0
+                    if len(result) == (sql =~ pattern ? 1 : 0)
                         return sw#autocomplete#all_objects(a:base)
                     endif
 
@@ -350,28 +403,38 @@ function! sw#autocomplete#perform(findstart, base)
                     return sw#autocomplete#all_objects(a:base)
                 endif
             endif
-        elseif b:autocomplete_type == 'insert'
+        elseif autocomplete_type == 'insert'
             " If we are before the first paranthese, then just return the list
             " of tables
             if substitute(sql, '\n', ' ', 'g') =~ '\v\c^[ \s\t]*insert[ \s\t]+into[^\(]*#cursor#'
                 return sw#autocomplete#all_objects(a:base)
             endif
 
-            let pattern = '\v\c[ \s\t]*insert[\s\t ]+into[\s\t ]*(' . s:_pattern_identifier . ')[\s\t ]*\([^\)]*#cursor#'
+            " If we are in the fields part of the insert,
+            let pattern = '\v\c[ \s\t]*insert[\s\t ]+into[\s\t ]*(' . s:_pattern_identifier . ')[\s\t ]*\(([^\)]*#cursor#[^\)]*)\)'
             if sql =~ pattern
                 let l = matchlist(sql, pattern, '')
                 if len(l) > 1
                     let tbl = l[1]
-                    return sw#autocomplete#table_fields(tbl, a:base)
+                    " If we have some fields input already betweeen
+                    " paranthesis
+                    let result = sw#autocomplete#table_fields(tbl, a:base, 1)
+                    if len(l) >= 4
+                        " Do not add them again in the list of auto-complete
+                        let fields = s:find_identifiers(l[4])
+                        let result = filter(result, 'index(fields, v:val["word"]) == -1')
+                    endif
+
+                    return result
                 endif
             endif
-        elseif b:autocomplete_type == 'drop'
+        elseif autocomplete_type == 'drop'
             if sql =~ '\v\c<drop>.*<table>'
                 return sw#autocomplete#tables(a:base)
             elseif sql =~ '\v\c<drop>.*<view>'
                 return sw#autocomplete#views(a:base)
             endif
-        elseif b:autocomplete_type == 'alter'
+        elseif autocomplete_type == 'alter'
             let pattern = '\v\c<alter>.*<table>[\s\t ]+(' . s:_pattern_identifier . ').*<(alter|change|modify)>.*#cursor#'
             if sql =~ '\v\c<alter>[\s\t ]+<table>[\s\t ]*#cursor#'
                 return sw#autocomplete#tables(a:base)
@@ -382,11 +445,11 @@ function! sw#autocomplete#perform(findstart, base)
                     return sw#autocomplete#table_fields(tbl, a:base)
                 endif
             endif
-		elseif b:autocomplete_type == 'delete'
+		elseif autocomplete_type == 'delete'
 			if substitute(sql, '\n', ' ', 'g') =~ '\v\c^[ \s\t\r]*delete[ \s\t]+from.{-}#cursor#'
 				return sw#autocomplete#tables(a:base)
 			endif
-        elseif b:autocomplete_type == 'proc'
+        elseif autocomplete_type == 'proc'
             let result = []
             for proc in s:get_cache_procs()
                 if proc =~ '\c^' . a:base
@@ -395,20 +458,24 @@ function! sw#autocomplete#perform(findstart, base)
             endfor
 
             return sort(result, "sw#autocomplete#sort")
-        elseif b:autocomplete_type == 'wbconnect'
-            let profiles = sw#profiles#get()
-            let result = []
-            for profile in keys(profiles)
-                if profile['name'] =~ '^' . a:base
-                    call add(result, profile['name'])
-                endif
-            endfor
-
-            return result
+        elseif autocomplete_type == 'wbconnect'
+            return s:complete_cache(a:base, 'profiles', 'name')
         endif
 
-        return []
+        return s:complete_cache(a:base, 'macros', 'name')
     endif
+endfunction
+
+function! s:complete_cache(base, key, prop)
+    let values = sw#cache_get(a:key)
+    let result = []
+    for value in values(values)
+        if value[a:prop] =~ '^' . a:base
+            call add(result, value[a:prop])
+        endif
+    endfor
+
+    return result
 endfunction
 
 function! s:get_sql_type(sql)
@@ -438,25 +505,34 @@ function! s:get_sql_type(sql)
     return 'other'
 endfunction
 
+function! s:extract_pattern(sql, pattern, name)
+    let n = 0
+    let sql = a:sql
+    let m = matchstr(sql, a:pattern, '')
+    let matches = []
+    while m != ''
+        let sql = substitute(sql, a:pattern, '#' . a:name . n . '#', '')
+        let cmd = "call add(matches, {'#" . a:name . n . "#': \"" . substitute(substitute(m, '"', "\\\"", 'g'), '\v^\((.*)\)$', '\1', 'g') . "\"})"
+        execute cmd
+        let m = matchstr(sql, a:pattern, '')
+        let n += 1
+    endwhile
+
+    " Return the new query with all the matches replaced
+    return [sql, matches]
+endfunction
+
+function! s:extract_expressions(sql)
+    return s:extract_pattern(a:sql, s:pattern_expressions, 'val')
+endfunction
+
 function! s:extract_subqueries(sql)
     let pattern = '\v\c(\([ \s\t]*select[^\(\)]+\))'
     let s = substitute(a:sql, s:pattern_expressions, '#values#', 'g')
 	while s =~ s:pattern_expressions
 		let s = substitute(s, s:pattern_expressions, '#values#', 'g')
 	endwhile
-    let matches = []
-    let n = 0
-    let m = matchstr(s, pattern, '')
-    while m != ''
-        let s = substitute(s, pattern, '#sq' . n . '#', '')
-        let cmd = "call add(matches, {'#sq" . n . "#': \"" . substitute(substitute(m, '"', "\\\"", 'g'), '\v^\((.*)\)$', '\1', 'g') . "\"})"
-        execute cmd
-        let m = matchstr(s, pattern, '')
-        let n = n + 1
-    endwhile
-
-    " Return the new query with all the matches replaced
-    return [s, matches]
+    return s:extract_pattern(s, pattern, 'sq')
 endfunction
 
 function! s:get_fields_part(sql)
@@ -470,12 +546,8 @@ function! s:get_fields_part(sql)
 endfunction
 
 function! sw#autocomplete#get_tables_part(sql, ...)
-    if a:0
-        let autocomplete_type = a:1
-    else
-        let autocomplete_type = b:autocomplete_type
-    endif
-    let sql = s:eliminate_sql_comments(a:sql)
+    let autocomplete_type = s:get_sql_type(sw#eliminate_sql_comments(a:sql))
+    let sql = sw#eliminate_sql_comments(a:sql)
     let _subqueries = s:extract_subqueries(sql)
     let sql = _subqueries[0]
     let subqueries = _subqueries[1]
@@ -532,10 +604,10 @@ function! s:get_subquery_fields(sql, subqueries)
             " get my_id, and then return the autocomplete with alias.my_id.
             " That's why we eliminate everything before the point
             " If the field does not contain *, we just get the last identifier
-			if field =~ '\v\.'
-				let f = matchstr(field, '\v([^\.]+)$')
-			elseif field =~ '\v[ ]'
+			if field =~ '\v[ ]'
 				let f = matchstr(field, '\v([^ ]+)$')
+            elseif field =~ '\v\.'
+				let f = matchstr(field, '\v([^\.]+)$')
 			else
 				let f = field
 			endif
@@ -548,7 +620,7 @@ function! s:get_subquery_fields(sql, subqueries)
             " get_tables_part function to consider the query as a select
             " query, and not update query
             call sw#session#set_buffer_variable('subquery', 1)
-            let _tmp = s:get_tables(sql, a:subqueries)
+            let _tmp = sw#autocomplete#get_tables(sql, a:subqueries)
             for row in _tmp
                 if (has_key(row, 'fields'))
                     for f in row['fields']
@@ -574,7 +646,7 @@ function! s:get_subquery_fields(sql, subqueries)
                 let from = s:canonize_from(from)
                 " Check the alias (search for something like table as f or
                 " table f)
-                let m = matchstr(from, '\v([#]?[\w]+[#]?)[ \s\t]+(as)?[ \s\t]*' . f)
+                let m = matchstr(from, '\v([#]?\w+[#]?)[ \s\t]+(as)?[ \s\t]*' . f)
                 if m != ''
                     " We don't have another subquery. Search in the from part
                     " where we have table as f or table f
@@ -629,12 +701,40 @@ function! s:find_subquery(key, subqueries)
     return ''
 endfunction
 
-function! s:get_tables(sql, subqueries)
+" Returns the identifiers eliminating the #cursor#
+function! s:find_identifiers(s)
+    " Get the list of identifiers from s. In the process,
+    " eliminate the #CURSOR# which corresponds to an identifier, but it's just
+    " added by us to get the cursor position
+    return split(substitute(substitute(a:s, '\v\.\w*', '', 'g'), '#CURSOR#', '', 'g'), s:pattern_identifier_split)
+endfunction
+
+" Returns the identifiers keeping the #cursor# part, but eliminating the empty
+" ones
+function! s:get_identifiers(s)
+    " The fields are splitted by the pattern identifiant splitter and then 
+    " we filter out the empty strings
+    return filter(split(a:s, s:pattern_identifier_split), 'v:val != ""')
+endfunction
+
+function! sw#autocomplete#is_select(sql)
+    return s:get_sql_type(sw#eliminate_sql_comments(a:sql)) == 'select'
+endfunction
+
+function! sw#autocomplete#get_tables(sql, subqueries, ...)
     ""if !(a:sql =~ '#CURSOR#')
     ""    return ""
     ""endif
 
+    " We might want to get the tables from a resultset
+    " (in case of SWSqlForeignKey). In this case, the sql
+    " buffer is not the current one (which is the result set buffer)
+    let buffer = a:0 ? a:1 : bufname('%')
+
     " Get the from part and eliminate the subqueries
+    if !sw#autocomplete#is_select(a:sql)
+        return []
+    endif
     let result = sw#autocomplete#get_tables_part(a:sql)
     let from = result[0]
     let subqueries = result[1] + a:subqueries
@@ -651,11 +751,15 @@ function! s:get_tables(sql, subqueries)
     " Get the list of identifiers from the from part. In the process,
     " eliminate the #CURSOR# which corresponds to an identifier, but it's just
     " added by us to get the cursor position
-    let identifiers = split(substitute(substitute(from, '\v\.\w*', '', 'g'), '#CURSOR#', '', 'g'), '\v[, \t]')
+    let identifiers = s:find_identifiers(from)
+
+    let treated = []
 
     for m in identifiers
+        " Eliminate the semmi column from the identifier
+        let m = substitute(m, '\v;', '', 'g')
         " If the identifier is reserved word not empty
-        if !(m =~ s:pattern_reserved_word) && m != ''
+        if !(m =~ s:pattern_reserved_word) && m != '' && index(treated, m) == -1
             " If it's a replaced subquery, 
             if m =~ s:pattern_subquery
                 let subquery = s:find_subquery(m, subqueries)
@@ -664,12 +768,12 @@ function! s:get_tables(sql, subqueries)
                     " The title is #ALIAS# because we expect to get an alias
                     " as next identifier, wich will be the table name
                     let fields = s:get_subquery_fields(subquery, subqueries)
-                    call add(tables, {'table': '#ALIAS#', 'fields': fields})
+                    call add(tables, {'table': 'subquery', 'fields': fields})
                 endif
             elseif m =~ s:pattern_identifier
                 " If it's a normal identiier then if we have a table with this
                 " name, add it's fields
-                let fields = s:get_cache_data_fields(m)
+                let fields = s:get_cache_data_fields(m, buffer)
                 if len(fields) > 0
                     call add(tables, {'table': m, 'fields': fields})
                 else
@@ -678,7 +782,7 @@ function! s:get_tables(sql, subqueries)
                     if len(tables) > 0
                         " If it was a subquery, and it had the name #ALIAS#,
                         " then replace the table name
-                        if (tables[len(tables) - 1]['table'] == '#ALIAS#')
+                        if (tables[len(tables) - 1]['table'] == 'subquery')
                             let tables[len(tables) - 1]['table'] = m
                         else
                             " Otherwise, just put it as alias
@@ -687,6 +791,7 @@ function! s:get_tables(sql, subqueries)
                     endif
                 endif
             endif
+            call add(treated, m)
         endif
     endfor
 
@@ -708,4 +813,37 @@ endfunction
 
 function! sw#autocomplete#set()
     setlocal completefunc=sw#autocomplete#perform
+endfunction
+
+function! sw#autocomplete#get_insert_parts(sql)
+    " Eliminate the strings
+    let strings = sw#get_sql_canonical(a:sql)
+    " Eliminate the comments
+    let sql = sw#eliminate_sql_comments(strings[0])
+    " Eliminate the expressions between paranthesis
+    let expressions = s:extract_expressions(sql)
+    " Eliminate the subqueries
+    let subqueries = s:extract_subqueries(expressions[0])
+
+    let sql = subqueries[0]
+    " Now we have something like insert into <tbl>#val0# values(...)
+    " In the list of values we can have subqueries. If we don't have the 
+    " #val0# part, it means the query is not a valid insert query, 
+    " so don't bother anymore
+    if len(expressions) == 0 || len(expressions[1][0]) == 0
+        return {}
+    endif
+
+    " The fields are splitted by the pattern identifiant splitter and then 
+    " we filter out the empty strings
+    let fields = s:get_identifiers(expressions[1][0]['#val0#'])
+    let pattern = '\v^[ \s\t]*insert[ \s\t]+.{-}#val0#[ \s\t]+values[ \s\t]*(\([^\)]+\)|#val1#).*$'
+    " Eliminate the cursor part, to test sql valid
+    " If the query is not a correct insert query, then don't bother anymore
+    if !(sql =~ pattern)
+        return {}
+    endif
+    let _values = substitute(sql, pattern, '\1', 'g')
+    let values = s:get_identifiers(_values == "#val1#" ? expressions[1][1]['#val1#'] : _values)
+    return {'sql': sql, 'fields': fields, 'values': values, 'strings': strings[1], 'expressions': expressions[1], 'subqueries': subqueries[1]}
 endfunction

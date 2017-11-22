@@ -46,7 +46,7 @@ function! ctrlp#sw_profiles#exit()
 endfunction
 
 function! ctrlp#sw_profiles#init()
-    let profiles = sw#profiles#get()
+    let profiles = sw#cache_get('profiles')
 
     let result = []
     for key in keys(profiles)

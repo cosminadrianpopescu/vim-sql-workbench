@@ -38,7 +38,7 @@ function! s:iterate(f)
         let type_ok = 0
         if (profile =~ '^[:\^]')
             if (len(s:profiles) == 0)
-                let s:profiles = sw#profiles#get()
+                let s:profiles = sw#cache_get('profiles')
             endif
             let dbms_type = substitute(profile, '^[:\^]', '', 'g')
             let cond = substitute(profile, '\v\c^([:\^]).*$', '\1', 'g')

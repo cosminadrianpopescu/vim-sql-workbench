@@ -61,6 +61,10 @@ if exists('g:sw_config_dir') && !(g:sw_config_dir =~ '\v\/$')
     let g:sw_config_dir .= '/'
 endif
 
+function! s:get_cache_folder()
+    return g:sw_cache . '/'
+endfunction
+
 function! sw#find_buffer_by_unique_id(uid)
     for k in keys(g:sw_session)
         if has_key(g:sw_session[k], 'unique_id')
@@ -429,7 +433,7 @@ function! sw#parse_macro_xml()
 endfunction
 
 function! sw#autocomplete_profile(ArgLead, CmdLine, CursorPos)
-    let profiles = sw#profiles#get()
+    let profiles = sw#cache_get('profiles')
 
     let result = []
 
@@ -569,4 +573,37 @@ function! sw#execute_file(file)
     for line in lines
         execute line
     endfor
+endfunction
+
+function! sw#cache_get(idx)
+    call sw#execute_file(s:get_cache_folder() . a:idx . '.vim')
+    return exists('b:' . a:idx) ? getbufvar('%', a:idx) : {}
+endfunction
+
+function! sw#to_clipboard(txt)
+    let clip = &clipboard
+    let reg = clip =~ '\cunnamedplus' ? '+' : '"'
+    let cmd = "let @" . reg . '=a:txt'
+    execute cmd
+endfunction
+
+function! sw#eliminate_sql_comments(sql)
+    let sql = sw#get_sql_canonical(a:sql)[0]
+    let sql = substitute(sql, '\v--.{-}#NEWLINE#', '#NEWLINE#', 'g')
+    let sql = substitute(sql, '\v--.{-}$', '', 'g')
+    let sql = substitute(sql, '\v\/\*.{-}\*\/', '', 'g')
+    let sql = substitute(sql, '#NEWLINE#', ' ', 'g')
+
+    return sql
+endfunction
+
+
+function! sw#get_buffer_from_resultset(channel)
+    for info in getbufinfo()
+        if getbufvar(info['bufnr'], 'sw_channel') == a:channel
+            return info
+        endif
+    endfor
+
+    return {}
 endfunction

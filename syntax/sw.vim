@@ -1,6 +1,6 @@
 syn match SWResultsetHeader '\v^([\=]SQL ([0-9]+).*|[\=]+|Query returned [0-9]+ rows)$'
-syn match SWResultsetHiddenColumns '\v\(Hidden columns: ([^\)]+)\)'
-syn match SWResultsetHiddenColumns '\v\(Filters: ([^\)]+)\)'
+syn match SWResultsetHiddenColumns '\v^\(Hidden columns: (.{-})\)$'
+syn match SWResultsetHiddenColumns '\v^\(Filters: (.{-})\)$'
 syn match SWResultsetColumns '\v^(.*)\n[\-+]+\n'
 syn match SWResultsetOracleError '\v\c\v^Error at line.*\n\_.{-}Execution time:.*$'
 

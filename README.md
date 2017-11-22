@@ -56,7 +56,7 @@ You can connect to any DBMS directly from VIM.
 
 * database explorer (e.g.: table lists, procedures list, views list, triggers
   list), extensible (you can have your own objects list)
-* SQL buffer with performant autocomplete
+* SQL buffer with very powerfull intellisense auto-completion
 * export any sql statement as `text`, `sqlinsert`, `sqlupdate`,
   `sqldeleteinsert`, `xml`, `ods`, `html`, `json`
 * search in object source
@@ -64,6 +64,7 @@ You can connect to any DBMS directly from VIM.
 * asynchronous (you can execute any command asynchronous)
 * fully customizable
 * transactions
+* NeoVim 100% support
 
 CONTENTS:
 
@@ -77,7 +78,8 @@ CONTENTS:
 8. Variables
 9. Commands
 10. Settings
-11. Screen shots
+11. DbExt comparison
+12. Screen shots
 
 Requirements
 ========================================
@@ -505,7 +507,7 @@ references tree.
 
 ## Intellisense
 
-`vim-sqlworkbench` plugin comes with intellisense out of the box. In order to
+`vim-sql-workbench` plugin comes with intellisense out of the box. In order to
 take advantage of the auto complete intellisense, you have to set the schema
 report (see the previous section).
 
@@ -580,20 +582,9 @@ Alternatively, you can execute the `WbDisplay` command. See
 ## Filtering the resultset
 
 While in the result window, you can filter the displayed rows. With the cursor
-on a resultset, you can just call the `SWSqlFilterColumn` command with the
-name of the column as a parameter (you can also click `tab` after the command,
-a list of available columns will be displayed). After this you will be asked
-to insert a filter value. 
-
-The filter value can be a regular expression pattern or an arithmetic value
-(this begins with `>`, `<` or `==`)
-
-*Note*: The filtering is done row by row. This means that if you have a
-multirow column, the filtering will be done based on each row of that column
-and not by the full value. 
-
-*Note2*: If you want to filter for a mathematical value for equality, you have
-to insert two equal signs (`==`). For example: `== 471`. 
+on a resultset, you can just call the `SWSqlFilter` command with the `where`
+condition as parameter. The plugin will send the query to the `dbms` and
+display the results in the same resultset.
 
 ## Hiding columns
 
@@ -639,6 +630,59 @@ Alternatively, if you don't use Airline integration, you can still see the
 current url in the status line by activating the status line in vim (`set
 laststatus = 2`) and then you can set the status line to include the buffer
 url. For example: `set statusline=%!sw#server#get_buffer_url(bufname('%'))`.
+
+## Following a foreign key
+
+If you have activated the schema report (see the previous section), you can
+(in a result set) follow a foreign key. In a result set, when you are on a
+row, you can call `SWSqlReferences` or `SWSqlReferencedBy` commands. 
+
+These two commands take zero or one argument. If you call the commands without
+any argument, you will get a list of possible foreign keys, starting from the
+current result set and with the values from the current row. You need to
+select one, and then the corresponding query will be generated and run.
+Otherwise, via auto-completion, you can select which foreign key you want to
+follow. 
+
+The `SWSqlReferences` command will tell you what rows the current row is
+referencing in another tables, and the command `SWSqlReferencedBy` will tell
+you what other rows from other tables are referencing the current row.
+
+*Example*
+
+Let's say, that you have the following table structure:
+
++--------------+    +-------------+
+| employees    |    | departments |
++--------------+    +-------------+
+| id           |    | id          |
+| lastName     |    | name        |
+| departmentId |    +-------------+
++--------------+
+
+If you execute `select * from employees`, you will get a list of all the
+employees. If you go to the resultsets buffer and put the cursor on an
+employee (let's say the one with `departmentId = 10` and employee `id = 1`),
+you can do
+
+```
+SWSqlReferences departments(id)=employees(departmentId)
+```
+
+This will generate and automatically execute the query `select * from
+departments where id = 10`
+
+Please note that you don't have to type in the argument, you can select it
+using the autocomplete of the command. 
+
+Same goes if you execute `select * from departments where id = 10` and the you
+select the deparment and you do
+
+```
+SWSqlReferencedBy employees(departmentId)=departments(id)
+```
+
+You will get a resultset with the employee with the `id` 1.
 
 SQL commands
 ========================================
@@ -939,17 +983,6 @@ command. Next time you execute an sql statement, the resultsets will be empty.
 If you want to wipeout all the resultsets for all buffers, you have to execute
 the command followed by a `!` (`SWSqlWipeoutResultsSets!`).
 
-## SWSqlShowOnlyColumn
-
-*Parameters*: 
-
-* column name: the name of the column to show
-
-This will hide all the columns from the current resultset with the exception
-of the mentioned column.
-
-*Note*: there is an autocomplete for the column name
-
 ## SWSqlShowOnlyColumns
 
 * column names: a list of white space separated list of columns to be shown
@@ -979,32 +1012,20 @@ This will hide the indeicated column.
 
 *Note*: there is an autocomplete for the column name
 
-## SWSqlFilterColumn
+## SWSqlFilter
 
 *Parameters*:
 
-* column name: the name of the column to filter
+* where: The `where` condition for the current resultset.
 
-This will apply a filter on the specified column. The filter can be either a
-mathematical expression (like `<= 2`) if the column is an `integer` or `float`
-column. If the column is of type `string`, you can have as a filter a regular
-expression. For example, `^exact name$`.
+This will construct a query from the given resultsets query with an added
+`where` to filter it.
 
 *Note*: there is an autocomplete for the column name
 
-## SWSqlUnfilterColumn
+## SWSqlUnfilter
 
-*Parameters*:
-
-* column name: the name of the column to unfilter
-
-This will remove any filters applied on the specified column.
-
-*Note*: there is an autocomplete for the column name
-
-## SWSqlRemoveAllFilters
-
-This will remove all filters applied for the current resultset.
+This will remove any filters applied on the specified resultset
 
 #SWSqlBufferConnect
 
@@ -1072,12 +1093,62 @@ window.
 This command will share a connection between the current buffer and the one
 indicated in the command
 
-## SWSqlForeignKey
+## SWSqlReferences
 
-When in a result set, you can go to a row and call this command with a column
-as an argument. A new sql will be generated and you will see the corresponding
-column foreign key row. For this to work, the `report` or `use-report` option
-has to be active (see the `Schema report` section)
+*Parameters*:
+
+* reference: The column to follow.
+
+Given a column name and a reference, this will fetch the rows from referenced
+from the current resultset in the destination table.
+
+## SWSqlReferencedBy
+
+*Paramaters*:
+
+* reference: The column to be followed in the current resultset
+
+Given a column name and a reference, this will fetch the rows from the source
+table which are referencing the current row.
+
+## SWSqlGenerateInsert
+
+*Parameters*:
+
+* table: The first parameter is the table for which to generate the insert
+* columns: The following parameters are the table columns (if missing, the
+  insert will be generated for all table columns)
+
+This will generate an insert for the given table and columns. The insert will
+be copied to clipboard by default. If you want it to also be executed
+immediatelly, you can expand it using the `!` after the command (see `:help
+bang`).
+
+## SWSqlGetMacroSql
+
+If the cursor is on a macro, this command will return the current sql behind
+the macro see [here](http://www.sql-workbench.net/manual/macros.html). The sql
+is coppied to clipboard.
+
+## SWSqlInsertMatch
+
+If you are with the cursor in the fields part of an sql, this will show you
+the corresponding value in a message. If your cursor is on the values part,
+then this will show you the corresponding column.
+
+*Note*: This will not move the cursor by default. If you want you can add the
+following shortcuts to your `vimrc`:
+
+```
+nmap <Leader>* :SWSqlInsertMatch<cr>n
+nmap <Leader># :SWSqlInsertMatch<cr>N
+```
+
+Then, in an insert columns part, you can click `leader` and then `#` and this
+will also put the cursor on the value. However, if there is something else
+between the cursor and the value with the same name, the cursor will stop
+there (this is not 100% safe). Observe that the shortcut will execute
+`SWSqlInsertMatch` and then do a `n` (next result).
 
 Settings
 ========================================
@@ -1164,6 +1235,150 @@ and
   build 121.4 and more)
 * `g:sw_plugin_path`: for `cygwin` environments: specify the plugin
   installation path (for example `c:/Users/cosmin/.vim/bundle/vim-sql-workbench`)
+
+DbExt vs VIM SQL Workbench
+========================================
+
++--------------------------------------+-----------------+-------------------+
+| Feature                              | DbExt           | vim sql workbench |
++--------------------------------------+-----------------+-------------------+
+| Dependencies                         | perl, perl ODBC | SQL Workbench/J   |
+|                                      |                 |                   | 
+| GUI                                  |                 |                   |
+|   Menus                              |        X        |         -         |
+|   Management of profile              |        -        |         X         |   
+|                                      |                 |                   | 
+| Profiles                             |                 |                   |
+|   Prompt for connection parameters   |        X        |         -         |
+|   Manage profiles                    |        X        |         X         |
+|   Read only profiles                 |        -        |         X         |
+|   Connect to several DBMS            |        X        |         X         |
+|                                      |                 |                   |
+| Result sets                          |                 |                   |
+|   Execute SQL statements from buffer |        X        |         X         |
+|   Refresh a result set               |        X        |         X         |
+|   Change display (form or tabular)   |        X        |         X         |
+|   Parameters substitutions           |        X        |         X         |
+|   Asynchronious execution of sqls    |        -        |         X         |
+|   Mappings                           |        X        |         X         |
+|   Mappings with sql commands         |        X        |         X         |
+|   Intellisense autocompletion        |        -        |         X         |
+|   SQL History                        |        X        |         X         |
+|   Transactions                       |        X        |         X         |
+|   Export of sql resultsets           |        -        |         X         |
+|   Import from various formats        |        -        |         X         |
+|   SQL Commands confirmation          |        -        |         X         |
+|   Follow foreign key in result set   |        -        |         X         |
+|   Filter resultsets                  |        -        |         X         |
+|   Hide columns in result sets        |        -        |         X         |
+|                                      |                 |                   | 
+| Database explorer                    |        -        |         X         |
+|   See the references tree of a table |        -        |         X         |
+|                                      |                 |                   | 
+| Tools                                |                 |                   |
+|   Parse non sql files                |        X        |         -         |
+|   Macros                             |        -        |         X         |
+|   Search in tables definition        |        -        |         X         |
+|   Search for data in tables          |        -        |         X         |
+|   Comparing databases                |        -        |         X         |
+|   Copy across databases              |        -        |         X         |
+|   Use annotations                    |        -        |         X         |
++--------------------------------------+-----------------+-------------------+
+
+Initially, I started this tool as a proof of concept for the console
+capabilities of `SQL Workbench/J`. It was just a toy. Without transactions, I
+was basically using it just to do a few selects. Every time I would need
+something more serious, I would open the GUI of `SQL Workbench/J` and work
+there. 
+
+In time though, this tool has become more powerfull with each version, and it
+reached the phase where I don't need to open the GUI version for anything. The
+last thing that I was using the GUI version for, was the dependencies tree.
+Starting with version 7, once I succedeed in including this in the plugin
+database explorer, I basically stopped using the GUI version and I work only
+from within `VIM`.  
+
+Another thing I noticed is that this plugin surpassed `DbExt` in terms of
+available features long time ago, so I thought to do a quick comparison.
+From the beginning, I have to let the reader know that this comparison has
+been done only based on the `DbExt` documentation, since I was not able to
+actually install `DbExt`. `Perl` dependency was a bump, and then trying to use
+the `mysql` client was a no go because I have `mysql` installed in a non
+standard path. 
+
+Another thing worth mentioning is that the comparison is with `DbExt` perl
+feature, since without `Perl` and without transactions, `DbExt` is just a
+toy which cannot really be used profesionally. So the comparison is between
+this plugin and the `DbExt` ODBC features. Because of this, for example, when
+it comes to `cygwin`, there is no comparison to be made. I would go with this
+plugin without thinking twice. This is why, for example I put a `-` (missing
+feature) to the asynchronous processing. `DbExt` has asynchronous processing
+only for the non `ODBC` way of sending queries, which cannot even be
+considered for professional usage. The ODBC does not have asynchronous
+processing. So, let's begin.
+
+## Installation
+
+When it comes to installing the two plugins, for `DbExt`, you need root
+permissions (if you don't have perl) installed on the computer, you need a `vim`
+compiled with `perl` and you need to install `perl` modules. In comparison, for
+`vim-sql-workbench`, you only need to install the `SQL Workbench/J` application,
+which is a java app (so no root needed) and to download the required `jdbc`
+driver. That's it. So, a big plus for this plugin.
+
+## GUI
+
+In terms of GUI, DbExt has menus integration, which this plugin lacks. This is a
+plus for DbExt.
+
+## Profiles
+
+DbExt has an option to ask for a connection parameters, which this plugin does
+not have at the moment (will be implemented in a future version). Other than
+that, the profiles for this plugin can be managed using the GUI of `SQL
+Workbench/J`, which is a very convenient way of doing this, so in terms of
+profile management, a plus again for `vim-sql-workbench`. Also, another plus it
+is represented by the possibility of `SQL Workbench/J` to have readonly
+profiles.
+
+## SQL windows and resultsets
+
+When it comes to the basics that anyone could expect from a plugin made to
+execute SQL queries agains a database, both softwares have everything (refresh a
+resultset, parameters substitution, history, transactions etc.). 
+
+But when it comes to advanced features, there cannot be any comparison.
+`vim-sql-workbench` has asynchronious execution, very powerfull trully
+intellisense autocompletion, export of results, import from various formats,
+confirmation of commands execution, following of foreign keys (what other tables
+are referencing the current row, or what other tables is the current row
+referencing). `DbExt` lacks all of these (the autocomplete of `DbExt` is again,
+a toy compared with the intellisense offered by this plugin), so again, a very
+big plus for `vim-sql-workbench`.
+
+Also, this plugin has a database explorer, which includes a database references
+tree.
+
+##Tools
+
+One thing that `DbExt` is doing and this plugin is not is parsing non-sql files,
+extracting a query and running it against a database. This is a plus for
+`DbExt`. 
+
+But in terms of tools, this plugin has macros (basically sql queries shortcuts),
+can search for terms in table definitions or can search for data in tables, can
+compare two databases, can copy data across databases or can use special
+comments in queries which will be interpreted by the `SQL Workbench/J` engine
+(like annotations). Altough all these tools are comming as a part of `SQL
+Workbench/J`, they can be used directly in vim with the help of this plugin. As
+I was saying in the beginning of this chapter, no need to open the GUI `SQL
+Workbench/J`. So, again, in terms of tools, a big plus for `vim-sql-workbench`.
+
+## Conclusion
+
+As seen, this plugin has surpassed `DbExt` in terms of features long time ago.
+However, if anyone considers that I've missed something, please open an issue
+and let me know.
 
 Screen shots
 ========================================
