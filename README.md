@@ -652,6 +652,7 @@ you what other rows from other tables are referencing the current row.
 
 Let's say, that you have the following table structure:
 
+```
 +--------------+    +-------------+
 | employees    |    | departments |
 +--------------+    +-------------+
@@ -659,6 +660,7 @@ Let's say, that you have the following table structure:
 | lastName     |    | name        |
 | departmentId |    +-------------+
 +--------------+
+```
 
 If you execute `select * from employees`, you will get a list of all the
 employees. If you go to the resultsets buffer and put the cursor on an
@@ -1235,10 +1237,13 @@ and
   build 121.4 and more)
 * `g:sw_plugin_path`: for `cygwin` environments: specify the plugin
   installation path (for example `c:/Users/cosmin/.vim/bundle/vim-sql-workbench`)
+* `g:sw_prefer_sql_over_macro`: if true, when executing a macro, the plugin
+  will send to `SQL Workbench/J` the query behind the macro
 
 DbExt vs VIM SQL Workbench
 ========================================
 
+```
 +--------------------------------------+-----------------+-------------------+
 | Feature                              | DbExt           | vim sql workbench |
 +--------------------------------------+-----------------+-------------------+
@@ -1284,6 +1289,7 @@ DbExt vs VIM SQL Workbench
 |   Copy across databases              |        -        |         X         |
 |   Use annotations                    |        -        |         X         |
 +--------------------------------------+-----------------+-------------------+
+```
 
 Initially, I started this tool as a proof of concept for the console
 capabilities of `SQL Workbench/J`. It was just a toy. Without transactions, I
