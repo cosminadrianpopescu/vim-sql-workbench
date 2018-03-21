@@ -33,7 +33,7 @@ let s:current_buffer = ''
 function! ctrlp#sw_profiles#accept(mode, str)
     let command = sw#get_connect_command(a:str)
     call sw#sqlwindow#connect_buffer('e', s:current_buffer)
-    call sw#sqlwindow#execute_sql(command)
+    call sw#sqlwindow#execute_macro(command)
     let s:current_buffer = ''
     if exists('s:position')
         call setpos('.', s:position)
@@ -46,6 +46,14 @@ function! ctrlp#sw_profiles#exit()
 endfunction
 
 function! ctrlp#sw_profiles#init()
+    let file = ctrlp#utils#cachedir() . '/sw_profiles'
+    if !filereadable(file)
+        sil! cal ctrlp#progress('Indexing...')
+        call sw#profiles#update('')
+        while !filereadable(file)
+            sleep 300m
+        endwhile
+    endif
     let profiles = sw#cache_get('profiles')
 
     let result = []
@@ -53,6 +61,10 @@ function! ctrlp#sw_profiles#init()
         call add(result, key)
     endfor
     return result
+endfunction
+
+function! ctrlp#sw_profiles#clear_cache()
+    call delete(ctrlp#utils#cachedir() . '/sw_profiles')
 endfunction
 
 " Give the extension an ID
@@ -64,12 +76,12 @@ function! ctrlp#sw_profiles#id()
 endfunction
 
 function! ctrlp#sw_profiles#enter()
-    let s:current_buffer = bufname('%')
+    let s:current_buffer = sw#bufname('%')
     let name = sw#sqlwindow#get_resultset_name()
     call sw#goto_window(name)
-    if bufname('%') == name
+    if sw#bufname('%') == name
         bwipeout 
-        let s:current_buffer = bufname('%')
+        let s:current_buffer = sw#bufname('%')
     endif
     let s:position = getcurpos()
 endfunction

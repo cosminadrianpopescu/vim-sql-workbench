@@ -7,6 +7,8 @@ it, here is the quick start:
 * install `SQL Workbench/J` from [here](http://www.sql-workbench.net/)
 * install your `jdbc` driver for your database see
   [here](http://www.sql-workbench.net/)
+* set `SQL Workbench/J` to not use `JLine` (in `SQL Workbench/J` config file,
+  add the following line: `workbench.console.use.jline=false`)
 * open vim
 
 *Running sql queries against a DBMS*:
@@ -21,7 +23,7 @@ it, here is the quick start:
 * otherwise, you can do `:SWSqlBufferConnect` and then in the buffer execute
   `WbConnect` (`<Leader>C-<SPACE>`)
 * go to an sql statement
-* in normal mode, do `<Leader><C-@>` (this is `ctrl` + `space`)
+* in normal mode, do `<Leader><C-SPACE>`
 
 *Opening a database explorer*
 
@@ -323,7 +325,7 @@ You can also add a panel to an existing tab, using the
 * The command (this is the SQL command to be sent to the DBMS once this option
   is selected
 
-##Events
+## Events
 
 The database explorer has events to which you can hook a function to be
 executed before the command is executed or after the result is received. If
@@ -380,7 +382,7 @@ The SQL buffer
 ========================================
 
 The SQL buffer is a normal `vim` buffer from which you can send SQL commands
-to your DBMS and in which you can use the user completion (&lt;C-x&gt;&lt;C-u&gt;) to have
+to your DBMS and in which you can use the user completion (&lt;C-x&gt;&lt;C-o&gt;) to have
 intellisense autocompletion. 
 
 You can connect an opened vim buffer to a server using the
@@ -1152,6 +1154,16 @@ between the cursor and the value with the same name, the cursor will stop
 there (this is not 100% safe). Observe that the shortcut will execute
 `SWSqlInsertMatch` and then do a `n` (next result).
 
+## CtrlPSW
+
+If you activated the integration with `CtrlP`, then this will open up directly
+`CtrlP` in the `SQL Workbench/J profiles` tab
+
+## CtrlPClearSWCache
+
+This will reset the profiles cache. Next time when you will access the `CtrlP`
+workbench tab, the profiles will be read again.
+
 Settings
 ========================================
 
@@ -1365,7 +1377,7 @@ big plus for `vim-sql-workbench`.
 Also, this plugin has a database explorer, which includes a database references
 tree.
 
-##Tools
+## Tools
 
 One thing that `DbExt` is doing and this plugin is not is parsing non-sql files,
 extracting a query and running it against a database. This is a plus for

@@ -37,5 +37,7 @@ function! sw#profiles#finish(profile, txt)
     if !(a:txt =~ 'XSLT transformation.*finished successfully')
         call sw#display_error("There was a problem fetching the profiles for Sql Workbench (maybe the g:sw_cache) variable is not set? Please note that you need to either create the default folder (~/.cache/sw) either to set the variable to an existing folder for autocomplete or CtrlP integration to work")
         call sw#display_error("The output of the command was " . a:txt)
+    elseif exists('g:loaded_ctrlp') && g:loaded_ctrlp == 1
+        call writefile([], ctrlp#utils#cachedir() . '/sw_profiles')
     endif
 endfunction

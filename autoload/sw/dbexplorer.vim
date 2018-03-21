@@ -107,7 +107,7 @@ endfunction
 
 function! sw#dbexplorer#switch_bottom_panels()
 	if exists('b:profile')
-		if bufname('%') == '__DBExplorer__-' . b:profile
+		if sw#bufname('%') == '__DBExplorer__-' . b:profile
 			call sw#goto_window('__SQL__-' . b:profile)
 		else
 			call sw#goto_window('__DBExplorer__-' . b:profile)
@@ -120,7 +120,7 @@ function! s:get_panels()
 endfunction
 
 function! sw#dbexplorer#set_values_to_all_buffers(keys, values)
-    let name = bufname('%')
+    let name = sw#bufname('%')
     for w in s:get_panels()
         call sw#goto_window(w)
         let i = 0
@@ -137,7 +137,7 @@ function! sw#dbexplorer#set_values_to_all_buffers(keys, values)
 endfunction
 
 function! sw#dbexplorer#unset_values_from_all_buffers(keys)
-    let name = bufname('%')
+    let name = sw#bufname('%')
     for w in s:get_panels()
         call sw#goto_window(w)
         for key in a:keys
@@ -531,7 +531,7 @@ endfunction
 
 " Returns true if the current tab is a db explorer tab{{{2
 function! sw#dbexplorer#is_db_explorer_tab()
-    let name = bufname('%')
+    let name = sw#bufname('%')
     return name =~ '\v^__Info__' || name =~ '\v^__DBExplorer__' || name =~ '\v^__SQL__'
 endfunction
 
@@ -577,7 +577,7 @@ function! sw#dbexplorer#filtered_data(result)
 endfunction
 
 function! sw#dbexplorer#fold_columns(result)
-    let name = bufname('%')
+    let name = sw#bufname('%')
     call sw#goto_window('__SQL__-' . b:profile)
 
     setlocal foldmethod=expr

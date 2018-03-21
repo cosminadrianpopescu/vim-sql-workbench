@@ -16,6 +16,26 @@ let b:profiles = {}
 <xsl:call-template name="profiles"/>
 </xsl:template>
 
+<xsl:template name="string-replace-all">
+    <xsl:param name="text" />
+    <xsl:param name="replace" />
+    <xsl:param name="by" />
+    <xsl:choose>
+        <xsl:when test="contains($text, $replace)">
+            <xsl:value-of select="substring-before($text,$replace)" />
+            <xsl:value-of select="$by" />
+            <xsl:call-template name="string-replace-all">
+                <xsl:with-param name="text" select="substring-after($text,$replace)" />
+                <xsl:with-param name="replace" select="$replace" />
+                <xsl:with-param name="by" select="$by" />
+            </xsl:call-template>
+        </xsl:when>
+        <xsl:otherwise>
+            <xsl:value-of select="$text" />
+        </xsl:otherwise>
+    </xsl:choose>
+</xsl:template>
+
 <xsl:template name="profiles">
     <xsl:for-each select="/java/object/void[@method='add']/object[@class='workbench.db.ConnectionProfile']">
         <xsl:variable name="profile">
@@ -24,11 +44,20 @@ let b:profiles = {}
                 <xsl:otherwise><xsl:value-of select="./void[@property='group']/string"/>\<xsl:value-of select="./void[@property='name']/string"/></xsl:otherwise>
             </xsl:choose>
         </xsl:variable>
-        let b:profiles['<xsl:value-of select="$profile"/>'] = {}
-        let b:profiles['<xsl:value-of select="$profile"/>']['name'] = '<xsl:value-of select="$profile"/>'
-        let b:profiles['<xsl:value-of select="$profile"/>']['type'] = '<xsl:value-of select="./void[@property='driverName']/string"/>'
-        let b:profiles['<xsl:value-of select="$profile"/>']['group'] = '<xsl:value-of select="./void[@property='group']/string"/>'
-        <xsl:call-template name="properties"><xsl:with-param name="profile" select="$profile"/></xsl:call-template>
+        <xsl:variable name="quot">'</xsl:variable>
+        <xsl:variable name="quot2">''</xsl:variable>
+        <xsl:variable name="profile_parsed">
+            <xsl:call-template name="string-replace-all">
+                <xsl:with-param name="text" select="$profile"></xsl:with-param>
+                <xsl:with-param name="replace" select="$quot"></xsl:with-param>
+                <xsl:with-param name="by" select="$quot2"></xsl:with-param>
+            </xsl:call-template>
+        </xsl:variable>
+        let b:profiles['<xsl:value-of select="$profile_parsed"/>'] = {}
+        let b:profiles['<xsl:value-of select="$profile_parsed"/>']['name'] = '<xsl:value-of select="$profile_parsed"/>'
+        let b:profiles['<xsl:value-of select="$profile_parsed"/>']['type'] = '<xsl:value-of select="./void[@property='driverName']/string"/>'
+        let b:profiles['<xsl:value-of select="$profile_parsed"/>']['group'] = '<xsl:value-of select="./void[@property='group']/string"/>'
+        <xsl:call-template name="properties"><xsl:with-param name="profile" select="$profile_parsed"/></xsl:call-template>
     </xsl:for-each>
 </xsl:template>
 <xsl:template name="properties">

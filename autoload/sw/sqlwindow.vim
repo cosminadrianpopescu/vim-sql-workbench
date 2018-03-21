@@ -92,7 +92,7 @@ function! sw#sqlwindow#auto_commands(when)
 endfunction
 
 function! sw#sqlwindow#auto_disconnect_buffer()
-    let name = bufname(expand('<afile>'))
+    let name = sw#bufname(expand('<afile>'))
     let channel = getbufvar(name, 'sw_channel')
     call sw#server#disconnect_buffer(channel)
 endfunction
@@ -180,7 +180,7 @@ function! sw#sqlwindow#toggle_messages()
         return 
     endif
     call sw#goto_window(sw#sqlwindow#get_resultset_name())
-    if bufname('%') != sw#sqlwindow#get_resultset_name()
+    if sw#bufname('%') != sw#sqlwindow#get_resultset_name()
         return
     endif
     if b:state == 'resultsets'
@@ -345,7 +345,7 @@ function! sw#sqlwindow#go_to_ref(cmd, ...)
         return
     endif
     
-    let profile = sw#server#get_buffer_profile(bufname(b.bufnr))
+    let profile = sw#server#get_buffer_profile(sw#bufname(b.bufnr))
     let table = substitute(rel, pattern, '\1', 'g')
     let source_column = substitute(rel, pattern, '\2', 'g')
 
@@ -358,7 +358,7 @@ function! sw#sqlwindow#go_to_ref(cmd, ...)
     if !has_key(b:resultsets[n], 'columns')
         let b:resultsets[n].columns = s:split_into_columns(b:resultsets[n])
     endif
-    let col_idx = index(map(b:resultsets[n].header, 'tolower(v:val)'), tolower(column))
+    let col_idx = index(map(b:resultsets[n].header, 'tolower(substitute(v:val, ''\v\c^(.*)\([^\)]+\)$'', ''\1'', ''g''))'), tolower(column))
     if col_idx == -1
         call sw#display_error("Could not identify the source column in the resultset. Probably your result set does not include the foreign key. If you want to follow a reference, you need to include in the sql the foreign key.")
         return 
@@ -442,7 +442,8 @@ endfunction
 
 function! s:get_from_part(sql)
     let sql = substitute(s:eliminate_comments(a:sql), '\v[\r\n]', ' ', 'g')
-    return substitute(sql, '\v^[ ]*select(.{-})\sfrom\s.*$', '\1', 'g')
+
+    return substitute(sql, '\v\c^[ ]*select(.{-})\sfrom\s.*$', '\1', 'g')
 endfunction
 
 function! s:add_complete_field(table, idx)
@@ -569,7 +570,7 @@ function! sw#sqlwindow#complete_refs(a, cmd, pos)
 
         " Since we are in the result set, we find the profile in the 
         " buffer where the sql has been executed
-        let profile = sw#server#get_buffer_profile(bufname(b.bufnr))
+        let profile = sw#server#get_buffer_profile(sw#bufname(b.bufnr))
 
         let result = []
         " For each available table
@@ -785,7 +786,7 @@ function! s:open_resultset_window()
         call sw#session#init_section()
         call sw#set_special_buffer()
         call sw#sqlwindow#set_results_shortcuts()
-        execute "autocmd! BufLeave " . bufname('%') . " let b:position = getcurpos()"
+        execute "autocmd! BufLeave " . sw#bufname('%') . " let b:position = getcurpos()"
         if !s_below
             set nosplitbelow
         endif
@@ -794,7 +795,7 @@ function! s:open_resultset_window()
 
     call sw#goto_window(name)
 
-    return bufname('%') == name
+    return sw#bufname('%') == name
 endfunction
 
 function! s:split_into_columns(resultset)
@@ -1136,12 +1137,13 @@ function! sw#sqlwindow#check_results()
         let channel = b:sw_channel
         let name = sw#sqlwindow#get_resultset_name()
         if sw#is_visible(name)
+            let id = win_getid()
             call sw#goto_window(name)
             if (exists('b:current_channel') && b:current_channel != channel) || !exists('b:current_channel')
                 let b:current_channel = channel
                 call s:display_resultsets(1)
             endif
-            call sw#goto_window(bufname(expand('<afile>')))
+            call win_gotoid(id)
         endif
     endif
 endfunction
@@ -1180,10 +1182,10 @@ function! sw#sqlwindow#show_current_buffer_log()
     endif
 
     let log = substitute(sw#server#channel_log(b:sw_channel), "\r", "\n", 'g')
-    let log_name = "__LOG__" . fnamemodify(bufname('%'), ':t')
+    let log_name = "__LOG__" . fnamemodify(sw#bufname('%'), ':t')
     call sw#goto_window(log_name)
 
-    if bufname('%') != log_name
+    if sw#bufname('%') != log_name
         execute "split " . log_name
     endif
 
@@ -1232,7 +1234,7 @@ function! s:execute_sql_from_resultset(resultset, sql)
     endif
     if file != ''
         call sw#goto_window(file)
-        if bufname('%') == sw#sqlwindow#get_resultset_name()
+        if sw#bufname('%') == sw#sqlwindow#get_resultset_name()
             call sw#display_error("Could not identify the buffer for this resultset")
             return
         endif
@@ -1307,7 +1309,7 @@ function! sw#sqlwindow#delete_resultset()
 endfunction
 
 function! sw#sqlwindow#connect_buffer(...)
-    let file = bufname('%')
+    let file = sw#bufname('%')
     let command = 'e'
     if (a:0 >= 2)
         let file = a:2
@@ -1316,7 +1318,13 @@ function! sw#sqlwindow#connect_buffer(...)
         let command = a:1
     endif
 
-    execute command . " " . file
+    let pattern = '\v^__([0-9]+)__$'
+    if file =~ pattern
+        let nr = substitute(file, pattern, '\1', 'g')
+        execute "buffer " . nr
+    else
+        execute command . " " . file
+    endif
     call sw#session#init_section()
 
     if exists('b:autocomplete_tables')
@@ -1332,7 +1340,7 @@ endfunction
 
 function! sw#sqlwindow#share_connection(buffer)
     call sw#server#share_connection(a:buffer)
-    call sw#sqlwindow#open_buffer(bufname('%'), 'e')
+    call sw#sqlwindow#open_buffer(sw#bufname('%'), 'e')
 endfunction
 
 function! s:translate_part(input_parts, current)
@@ -1416,7 +1424,7 @@ function! sw#sqlwindow#complete_insert(arg, cmd, pos)
 endfunction
 
 function! sw#sqlwindow#generate_insert(args, exec)
-    let profile = sw#server#get_buffer_profile(bufname('%'))
+    let profile = sw#server#get_buffer_profile(sw#bufname('%'))
     if profile == ''
         call sw#display_error('You are not in an sql buffer')
         return 

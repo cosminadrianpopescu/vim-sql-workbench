@@ -37,7 +37,7 @@ endfunction
 
 function! sw#autocomplete#table_fields(tbl, base, ...)
     let get_info = a:0 ? a:1 : 0
-    let profile = get_info ? sw#server#get_buffer_profile(bufname('%')) : ''
+    let profile = get_info ? sw#server#get_buffer_profile(sw#bufname('%')) : ''
     let result = []
     let fields = s:get_cache_data_fields(a:tbl)
     if len(fields) > 0
@@ -156,7 +156,7 @@ function! sw#autocomplete#remove_table_from_cache(tbl)
 endfunction
 
 function! s:get_cache_tables(...)
-    let buffer = a:0 ? a:1 : bufname('%')
+    let buffer = a:0 ? a:1 : '%'
     let info = exists('b:sw_is_resultset') && b:sw_is_resultset ? sw#get_buffer_from_resultset(b:current_channel) : getbufinfo(buffer)
     if len(info) == 0
         return {}
@@ -211,7 +211,7 @@ function! s:get_cache_data_type(s)
 endfunction
 
 function! s:get_cache_data_fields(s, ...)
-    let buffer = a:0 ? a:1 : bufname('%')
+    let buffer = a:0 ? a:1 : sw#bufname('%')
     let cache = s:get_cache_tables(buffer)
     for table in keys(cache)
         if tolower(table) == 'v#' . tolower(a:s) || tolower(table) == 't#' . tolower(a:s)
@@ -266,7 +266,7 @@ endfunction
 function! sw#autocomplete#perform(findstart, base)
     " Check that the cache is alright
     if !exists('b:autocomplete_tables') && !exists('g:sw_autocomplete_default_tables')
-        let tables = sw#autocomplete#get_cache(bufname('%'))
+        let tables = sw#autocomplete#get_cache(sw#bufname('%'))
         if len(tables) > 0
             let b:autocomplete_tables = tables
         else
@@ -729,7 +729,7 @@ function! sw#autocomplete#get_tables(sql, subqueries, ...)
     " We might want to get the tables from a resultset
     " (in case of SWSqlForeignKey). In this case, the sql
     " buffer is not the current one (which is the result set buffer)
-    let buffer = a:0 ? a:1 : bufname('%')
+    let buffer = a:0 ? a:1 : sw#bufname('%')
 
     " Get the from part and eliminate the subqueries
     if !sw#autocomplete#is_select(a:sql)
@@ -812,7 +812,8 @@ function! sw#autocomplete#complete_cache_name(ArgLead, CmdLine, CursorPos)
 endfunction
 
 function! sw#autocomplete#set()
-    setlocal completefunc=sw#autocomplete#perform
+    ""setlocal completefunc=sw#autocomplete#perform
+    setlocal omnifunc=sw#autocomplete#perform
 endfunction
 
 function! sw#autocomplete#get_insert_parts(sql)

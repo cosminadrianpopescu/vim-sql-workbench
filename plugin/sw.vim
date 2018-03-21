@@ -67,6 +67,9 @@ endif
 
 if !exists('g:sw_cache')
     let g:sw_cache = $HOME . '/.cache/sw'
+    if !isdirectory(g:sw_cache)
+        call mkdir(g:sw_cache, "p")
+    endif
 endif
 
 if (!exists('g:sw_delimiter'))
@@ -201,7 +204,7 @@ if exists('g:extra_sw_panels')
     endfor
 endif
 
-command! -nargs=+ -complete=customlist,sw#autocomplete_profile SWDbExplorer call sw#dbexplorer#show_panel(<f-args>)
+command! -nargs=1 -complete=customlist,sw#autocomplete_profile SWDbExplorer call sw#dbexplorer#show_panel(<f-args>)
 command! -nargs=? SWDbExplorerClose call sw#dbexplorer#hide_panel(<f-args>)
 command! SWDbExplorerReconnect call sw#dbexplorer#reconnect()
 command! SWDbExplorerToggleFormDisplay call sw#dbexplorer#toggle_form_display()
@@ -232,6 +235,8 @@ command! -nargs=+ SWSearchData call sw#search#data(<f-args>)
 command! SWSearchDataAdvanced call sw#search#data()
 command! -nargs=1 SWSearchDataDefaults call sw#search#data_defaults(<f-args>)
 command! -nargs=0 SWSqlShowAllColumns call sw#sqlwindow#show_all_columns()
+command! -nargs=0 CtrlPSW call ctrlp#init(ctrlp#sw_profiles#id())
+command! -nargs=0 CtrlPClearSWCache call ctrlp#sw_profiles#clear_cache()
 command! -nargs=+ -complete=customlist,sw#sqlwindow#complete_columns SWSqlShowOnlyColumns call sw#sqlwindow#show_only_columns([<f-args>])
 command! -nargs=1 -complete=customlist,sw#sqlwindow#complete_columns SWSqlShowColumn call sw#sqlwindow#show_column(<f-args>)
 command! -nargs=1 -complete=customlist,sw#sqlwindow#complete_columns SWSqlHideColumn call sw#sqlwindow#hide_column(<f-args>, 1)

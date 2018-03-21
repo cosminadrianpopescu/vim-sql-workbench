@@ -25,6 +25,9 @@ function! s:get_report(profile, force)
     let file = s:get_name(a:profile) . '.vim'
     if !filereadable(file)
         let profiles = sw#cache_get('profiles')
+        if !has_key(profiles, a:profile)
+            return {}
+        endif
         let profile = profiles[a:profile]
         if has_key(profile['props'], 'use-report')
             let file = s:get_name(profile['props']['use-report']) . '.vim'

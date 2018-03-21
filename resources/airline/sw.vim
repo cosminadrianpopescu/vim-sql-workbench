@@ -21,7 +21,7 @@ function! airline#extensions#sw#apply(...)
   endif
 
   if exists('b:sw_channel')
-    let url = sw#server#get_buffer_url(fnamemodify(bufname('%'), ':p'))
+    let url = sw#server#get_buffer_url(fnamemodify(sw#bufname('%'), ':p'))
     if url != ''
       let g:airline_section_c = s:airline_section_c . s:spc . g:airline_left_alt_sep . s:spc . url
       return

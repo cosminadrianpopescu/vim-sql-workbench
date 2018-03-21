@@ -515,7 +515,7 @@ function! sw#get_connect_command(profile)
     let profile = substitute(a:profile, pattern, '\2', 'g')
     let group = substitute(a:profile, pattern, '\1', 'g')
     let group = group[0:strlen(group) - 2]
-    return 'wbconnect -profile=' . profile . (group == '' ? '' : ' -profileGroup=' . group) . ';'
+    return 'wbconnect -profile="' . profile . '"' . (group == '' ? '' : ' -profileGroup="' . group . '"') . ';'
 endfunction
 
 " Makes sure that an sql is not delimiter by the delimiter
@@ -606,4 +606,12 @@ function! sw#get_buffer_from_resultset(channel)
     endfor
 
     return {}
+endfunction
+
+function! sw#bufname(which)
+    if bufname(a:which) != ''
+        return bufname(a:which)
+    endif
+
+    return '__' . bufnr('%') . '__'
 endfunction

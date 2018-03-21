@@ -30,7 +30,7 @@ if !exists('g:sw_autocommands')
 endif
 
 function! sw#session#buffer_name()
-	let name = bufname('%')
+	let name = sw#bufname('%')
 	if name =~ '\v^__'
 		return name
 	endif

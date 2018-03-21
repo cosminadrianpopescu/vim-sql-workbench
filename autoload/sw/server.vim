@@ -25,8 +25,8 @@ let s:pattern_prompt = s:pattern_prompt_begin . '$'
 let s:pattern_wait_input = '\v^([a-zA-Z_][a-zA-Z0-9_]*( \[[^\]]+\])?: |([^\>]+\> )?([^\>]+\> )*Username|([^\>]+\> )*Password: |([^\>]+\>[ ]+)?Do you want to run the command [A-Z]+\? \(Yes\/No\/All\)[ ]+)$'
 let s:params_history = []
 let s:pattern_new_connection = '\v^Connection to "([^"]+)" successful$'
-let s:pattern_wbconnect = '\v.*wbconnect[ \t\n\r]+(-profile\=[ \r\n\t]*)?([^ \r\t\n;]+).*$'
-let s:pattern_wbconnect_group = '\v\c.*wbconnect.+-(profile)?group\=[ \r\n\t]*([^ \r\t\n;]+).*$'
+let s:pattern_wbconnect = '\c\v.*wbconnect[ \t\n\r]+-?(#WHAT#)?\=?([ \r\n\t]*)?((["''])([^\4]+)\4|([^ \r\n\t]+)).*$'
+let s:pattern_wbconnect_gen = '\v\c^[ \t\n\r]*wbconnect.*$'
 let s:timer = {'id': -1, 'sec' : 0}
 let s:events = {}
 
@@ -59,7 +59,7 @@ endfunction
 
 function! s:log_init(channel)
     if g:sw_log_to_file
-        let s:channel_handlers[a:channel].log = g:sw_tmp . '/' . sw#servername() . '-' . substitute(fnamemodify(bufname('%'), ':t'), '\.', '-', 'g')
+        let s:channel_handlers[a:channel].log = g:sw_tmp . '/' . sw#servername() . '-' . substitute(fnamemodify(sw#bufname('%'), ':t'), '\.', '-', 'g')
     else
         let s:channel_handlers[a:channel].log = ''
     endif
@@ -183,7 +183,7 @@ function! sw#server#start_sqlwb(handler, ...)
         let pid = jobpid(channel)
     endif
 
-    let s:channel_handlers[channel] = {'text': '', 'buffers': background ? [] : [fnamemodify(bufname('%'), ':p')], 'current_url': '', 'tmp_handler': '', 'vid': vid, 'pid': pid, 'handler': a:handler, 'current_profile': '', 'background': background}
+    let s:channel_handlers[channel] = {'text': '', 'buffers': background ? [] : [fnamemodify(sw#bufname('%'), ':p')], 'current_url': '', 'tmp_handler': '', 'vid': vid, 'pid': pid, 'handler': a:handler, 'current_profile': '', 'background': background}
     call s:log_init(channel)
 
     call s:trigger_event(channel, 'new_instance', {'channel': channel})
@@ -201,9 +201,31 @@ function! sw#server#share_connection(buffer)
     let b:sw_channel = channel
     for key in keys(s:channel_handlers)
         if key == channel
-            call add(s:channel_handlers[key]['buffers'], fnamemodify(bufname('%'), ':p'))
+            call add(s:channel_handlers[key]['buffers'], fnamemodify(sw#bufname('%'), ':p'))
         endif
     endfor
+endfunction
+
+function! s:get_wbconnect_pattern(what)
+    return substitute(s:pattern_wbconnect, '#WHAT#', a:what, 'g')
+endfunction
+
+function! s:try_wbconnect_extract(sql)
+    let pprofile = s:get_wbconnect_pattern('profile')
+    let pgroup = s:get_wbconnect_pattern('group')
+
+    let profile = ''
+    let group = ''
+
+    if substitute(a:sql, pprofile, '\1', 'g') == ''
+        let group = ''
+        let profile = substitute(a:sql, pprofile, '\6', 'g')
+    else
+        let profile = substitute(a:sql, pprofile, '\5', 'g')
+        let group = substitute(a:sql, pgroup, '\5', 'g')
+    endif
+
+    return {'profile': profile, 'group': group}
 endfunction
 
 function! sw#server#execute_sql(sql, ...)
@@ -218,10 +240,11 @@ function! sw#server#execute_sql(sql, ...)
     elseif a:0 >= 1
         let channel = a:1
     endif
-    if a:sql =~ s:pattern_wbconnect
-        let profile = substitute(a:sql, s:pattern_wbconnect, '\2', 'g')
-        if a:sql =~ s:pattern_wbconnect_group
-            let group = substitute(a:sql, s:pattern_wbconnect_group, '\2', 'g')
+    if a:sql =~ s:pattern_wbconnect_gen
+        let data = s:try_wbconnect_extract(a:sql)
+        let profile = data['profile']
+        let group = data['group']
+        if group != ''
             let profile = group . '\' . profile
         endif
 
@@ -258,7 +281,7 @@ function! sw#server#execute_sql(sql, ...)
     endif
 endfunction
 
-function s:trigger_event(channel, event, args)
+function! s:trigger_event(channel, event, args)
     let key = sw#find_channel(s:channel_handlers, a:channel)
     if key != '' && s:channel_handlers[key].background && a:event != 'exit'
         return
@@ -334,7 +357,7 @@ endfunction
 
 function! s:get_channel_handler_prop(buffer, prop)
     if a:buffer =~ '\v^[0-9]+$'
-        let name = bufname(a:buffer)
+        let name = sw#bufname(a:buffer)
     else
         let name = a:buffer
     endif
