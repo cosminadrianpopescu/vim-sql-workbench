@@ -984,6 +984,15 @@ function! s:get_next_resultset()
     return len(b:resultsets)
 endfunction
 
+" Returns true if the current result set is the resonse of a desc command
+function! s:describing(lines, i)
+    return a:i >= 1 && a:lines[a:i - 1] =~ sw#get_pattern('pattern_desc_titles')
+endfunction
+
+function! s:is_empty_line(lines, i)
+    return (a:i < len(a:lines) - 1 ? !(a:lines[a:i + 1] =~ sw#get_pattern('pattern_desc_titles')) : 1) && (a:lines[a:i] =~ sw#get_pattern('pattern_empty_line') || a:lines[a:i] == '')
+endfunction
+
 function! s:process_result(channel, result)
     if a:result == ''
         return
@@ -1004,7 +1013,7 @@ function! s:process_result(channel, result)
     let resultset_id = sw#generate_unique_id()
     let n = s:add_new_resultset(a:channel, resultset_id)
     while i < len(lines)
-        if i + 1 < len(lines) && lines[i + 1] =~ sw#get_pattern('pattern_resultset_start')
+        if i + 1 < len(lines) && lines[i + 1] =~ sw#get_pattern('pattern_resultset_start') && !s:describing(lines, i)
             "" If we have more than one resultset in a go.
             if len(b:resultsets[n].lines) > 0
                 let n = s:add_new_resultset(a:channel, resultset_id)
@@ -1014,12 +1023,12 @@ function! s:process_result(channel, result)
         endif
 
         let pattern_title = '\v^----  ?(.*)$'
-        if lines[i] =~ pattern_title
+        if lines[i] =~ pattern_title && !(lines[i] =~ sw#get_pattern('pattern_desc_titles'))
             let b:resultsets[n].title = substitute(lines[i], pattern_title, '\1', 'g')
             let i += 1
             continue
         endif
-        if (mode == 'resultset' && (lines[i] =~ sw#get_pattern('pattern_empty_line') || lines[i] == '' || lines[i] =~ sw#get_pattern('pattern_exec_time') || lines[i] =~ sw#get_pattern('pattern_no_results')))
+        if mode == 'resultset' && (s:is_empty_line(lines, i) || lines[i] =~ sw#get_pattern('pattern_exec_time') || lines[i] =~ sw#get_pattern('pattern_no_results'))
             let mode = 'message'
             call add(b:resultsets[n].lines, '')
         endif
@@ -1162,7 +1171,7 @@ function! sw#sqlwindow#folding(lnum)
     if (a:lnum == 1)
         let b:fold_level = 0
     endif
-    if getline(a:lnum) =~ s:pattern_resultset_title
+    if getline(a:lnum) =~ s:pattern_resultset_title || getline(a:lnum) =~ sw#get_pattern('pattern_desc_titles')
         let b:fold_level += 1
         return '>' . b:fold_level
     endif

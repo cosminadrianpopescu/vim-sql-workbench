@@ -49,7 +49,7 @@ endfunction
 
 let s:error = 0
 
-let s:patterns = {'pattern_no_results': '\c\v^\(([0-9]+) rows?\)', 'pattern_empty_line': '\v^[\r \s\t]*$', 'pattern_exec_time': '\v^Execution time: [0-9\.]+', 'pattern_resultset_start': '\v^([\-]+\+?)+([\-]*)-$'}
+let s:patterns = {'pattern_no_results': '\c\v^\(([0-9]+) rows?\)', 'pattern_empty_line': '\v^[\r \s\t]*$', 'pattern_exec_time': '\v^Execution time: [0-9\.]+', 'pattern_resultset_start': '\v^([\-]+\+?)+([\-]*)-$', 'pattern_desc_titles': '\v^---- .* - (Indexes|Triggers)$'}
 
 let s:script_path = expand('<sfile>:p:h') . '/../'
 
