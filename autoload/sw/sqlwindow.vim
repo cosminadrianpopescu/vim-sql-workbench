@@ -116,6 +116,22 @@ function! sw#sqlwindow#export_last()
     call sw#export_ods(g:sw_last_sql_query)
 endfunction
 
+function! s:get_delimiter(use_alternate)
+    let delimiter = b:delimiter
+    if (a:use_alternate)
+        let buf_profile = sw#server#get_buffer_profile(sw#bufname('%'))
+        let profiles = sw#cache_get('profiles')
+        if has_key(profiles, buf_profile) && has_key(profiles[buf_profile], 'props') && has_key(profiles[buf_profile]['props'], 'alt_delimiter')
+            let delimiter = profiles[buf_profile]['props']['alt_delimiter']
+        endif
+    endif
+
+    return delimiter
+endfunction
+
+" Possible arguments:
+" a:1 If true, then do not replace the #CURSOR# part in the returning sql
+" a:2 If true, then use the alternate delimiter
 function! sw#sqlwindow#extract_current_sql(...)
     let lines = getbufline(bufname(bufnr('%')), 1, '$')
     let pos = getpos('.')
@@ -138,26 +154,34 @@ function! sw#sqlwindow#extract_current_sql(...)
         call sw#display_error("The buffer is not connected to a server. Please use SWSqlConectToServer before running queries")
         return ''
     endif
-    let sqls = sw#sql_split(s, b:delimiter)
+    let delimiter = s:get_delimiter(a:0 > 1 && a:2)
+    let sqls = sw#sql_split(s, delimiter)
     for sql in sqls
         if sql =~ '#CURSOR#'
             if (!a:0 || (a:0 && !a:1))
                 let sql = substitute(sql, '#CURSOR#', '', 'g')
             endif
-            return sql . b:delimiter
+            if delimiter == '/'
+                let delimiter = "\n/\n"
+            endif
+            return sql . delimiter
         endif
     endfor
     call sw#display_error("Could not identify the current query")
     return ""
 endfunction
 
-function! sw#sqlwindow#extract_selected_sql()
+" Possible arguments:
+" a:1 If true, then use the alternate delimiter
+function! sw#sqlwindow#extract_selected_sql(...)
+    let use_alternate = a:0 && a:1
     let z_save = @z
     normal gv"zy
     let sql = @z
     let @z = z_save
-    if !(substitute(sql, '\v[\r\n]', '', 'g') =~ '\v' . b:delimiter . '[\n\r]*$')
-        let sql .= ';'
+    let delimiter = s:get_delimiter(use_alternate)
+    if !(substitute(sql, '\v[\r\n]', '', 'g') =~ '\v' . delimiter . '[\n\r]*$')
+        let sql .= delimiter
     endif
     return sql
 endfunction

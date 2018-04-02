@@ -317,6 +317,9 @@ function! sw#sql_split(sql, ...)
         let delimiter = substitute(a:1, '\/', "\\/", 'g')
     endif
     let canon = sw#get_sql_canonical(a:sql)
+    if delimiter == '/'
+        let delimiter = '#NEWLINE#/#NEWLINE#'
+    endif
     let s = canon[0]
     let matches = canon[1]
     let s = substitute(s, '\V' . delimiter, '#SEPARATOR#', 'g')

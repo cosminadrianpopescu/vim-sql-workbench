@@ -66,5 +66,8 @@ let b:profiles = {}
     <xsl:for-each select="./void[@property='connectionProperties']/object[@class='java.util.Properties']/void[@method='put']">
         let b:profiles['<xsl:value-of select="$profile"/>']['props']['<xsl:value-of select="./string[1]"/>'] = '<xsl:value-of select="./string[2]"/>'
     </xsl:for-each>
+    <xsl:for-each select="./void[@property='alternateDelimiter']/object[@class='workbench.sql.DelimiterDefinition']/void[@property='delimiter']">
+        let b:profiles['<xsl:value-of select="$profile"/>']['props']['alt_delimiter'] = '<xsl:value-of select="./string[1]"/>'
+    </xsl:for-each>
 </xsl:template>
 </xsl:transform>

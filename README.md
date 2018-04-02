@@ -845,10 +845,24 @@ identifiers, or from the beginning of the file to the first identifier or from
 the last identifier to the end of the file. You can change the delimiter using
 the `SWSqlDelimiter` command. 
 
+If you follow the command by a `!`, then the alternate delimiter is used. You
+can set the alternate delimiter in the connection properties.
+
+*NOTE*: if the file that you are in is delimiter by a normal delimiter (`;`) and
+you want to execute the command with the alternate delimiter, you have to have
+the alternate delimiter before and after the current query, otherwise, all the
+other queries will be sent to the `DBMS`. If you only want to execute one query
+with the alternate delimiter and all the queries in your file are using the
+standard semmicolumn delimiter, better select the query and execute
+`SWSqlExecuteSelected!`
+
 ## SWSqlExecuteSelected
 
 In an sql buffer, executes the current selected statement. The command works
 in visual mode. Be careful to delete the range before typing the command. 
+
+If you follow the command by a `!`, then the alternate delimiter is used. You
+can set the alternate delimiter in the connection properties.
 
 ## SWSqlExecuteAll
 
