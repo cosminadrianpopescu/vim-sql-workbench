@@ -248,6 +248,7 @@ command! -bang -nargs=+ -complete=customlist,sw#sqlwindow#complete_insert SWSqlG
 command! -nargs=0 SWSqlGetMacroSql call sw#to_clipboard(sw#sqlwindow#get_macro_sql(expand('<cword>')))
 command! -nargs=0 SWSqlInsertMatch call sw#sqlwindow#match()
 command! -bang -nargs=0 SWSqlWipeoutResultsSets call sw#sqlwindow#wipeout_resultsets(<bang>0)
+command! -bang -nargs=? -complete=file SWInclude call sw#sqlwindow#include(<bang>0, <f-args>)
 
 command! -nargs=+ -complete=customlist,sw#autocomplete_profile SWServerStart call sw#server#run(<f-args>)
 command! -nargs=1 SWServerStop call sw#server#stop(<f-args>)

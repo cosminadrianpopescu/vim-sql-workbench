@@ -1532,3 +1532,14 @@ function! sw#sqlwindow#filter_with_sql(where_part)
 
     call sw#sqlwindow#refresh_resultset()
 endfunction
+
+function! s:include(file, delimiter)
+    let sql = 'wbinclude -delimiter="' . a:delimiter . '" -file="' . a:file . '"' . ';'
+    call sw#sqlwindow#execute_sql(sql)
+endfunction
+
+function! sw#sqlwindow#include(alt_delimiter, ...)
+    let delimiter = s:get_delimiter(a:alt_delimiter)
+    let file = a:0 ? a:1 : sw#bufname('%')
+    call s:include(file, delimiter)
+endfunction
