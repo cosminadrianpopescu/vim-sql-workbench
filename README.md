@@ -688,6 +688,16 @@ SWSqlReferencedBy employees(departmentId)=departments(id)
 
 You will get a resultset with the employee with the `id` 1.
 
+
+## Including a file
+
+If you want to create a stored procedure, you might want to execute the current
+file. For this you have `SWInclude`. The command will execute the entire file
+using the `WbInclude` command from `SQL Workbench/J`. If you follow the command
+by a `!`, then the alternate delimiter is used. Otherwise the standard `;`
+delimiter is used. The command can also take one argument, which could be the
+file to be included, if you don't want it to be the current file.
+
 SQL commands
 ========================================
 
@@ -1177,6 +1187,17 @@ If you activated the integration with `CtrlP`, then this will open up directly
 
 This will reset the profiles cache. Next time when you will access the `CtrlP`
 workbench tab, the profiles will be read again.
+
+## SWInclude
+
+*Parameters*:
+
+* the file to include (optional, default the current file)
+
+The command will include a given file or the current file. It will execute
+`wbinclude -file=<file or current file>;`. If you follow the command by a `!`,
+then the alternate delimiter is used.
+
 
 Settings
 ========================================
