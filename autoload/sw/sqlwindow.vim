@@ -50,7 +50,7 @@ endfunction
 
 function! s:switch_to_results_tab()
     if !g:sw_switch_to_results_tab
-        wincmd t
+        keepalt wincmd t
     endif
 endfunction
 
