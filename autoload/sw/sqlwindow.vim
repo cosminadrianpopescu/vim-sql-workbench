@@ -22,6 +22,7 @@ let s:pattern_ignore_line = '\v\c^#IGNORE#$'
 let s:script_path = sw#script_path()
 let g:sw_last_resultset = []
 let s:pattern_columns_doubled = '\(([^\)]+)\)$'
+let s:not_connected_message = "The buffer is not connected to a server. Please use SWSqlConectToServer before running queries"
 
 function! s:check_sql_buffer()
     if (!exists('b:sw_channel'))
@@ -151,7 +152,7 @@ function! sw#sqlwindow#extract_current_sql(...)
     endfor
 
     if !exists('b:delimiter')
-        call sw#display_error("The buffer is not connected to a server. Please use SWSqlConectToServer before running queries")
+        call sw#display_error(s:not_connected_message)
         return ''
     endif
     let delimiter = s:get_delimiter(a:0 > 1 && a:2)
@@ -1539,6 +1540,14 @@ function! s:include(file, delimiter)
 endfunction
 
 function! sw#sqlwindow#include(alt_delimiter, ...)
+    if !exists('b:delimiter')
+        call sw#display_error(s:not_connected_message)
+        return ''
+    endif
+    if !a:0 && sw#bufname('%') != bufname('%')
+        call sw#display_error("The current buffer is an unnamed buffer probably, so cannot execute SWInclude")
+        return 
+    endif
     let delimiter = s:get_delimiter(a:alt_delimiter)
     let file = a:0 ? a:1 : sw#bufname('%')
     call s:include(file, delimiter)
