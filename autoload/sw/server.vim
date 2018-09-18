@@ -225,7 +225,8 @@ function! s:try_wbconnect_extract(sql)
         let group = substitute(a:sql, pgroup, '\5', 'g')
     endif
 
-    return {'profile': profile, 'group': group}
+    let _p = '\v;[ \t]*$'
+    return {'profile': substitute(profile, _p, '', 'g'), 'group': substitute(group, _p, '', 'g')}
 endfunction
 
 function! sw#server#execute_sql(sql, ...)

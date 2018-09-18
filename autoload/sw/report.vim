@@ -131,7 +131,7 @@ function! sw#report#profile_changed(args)
     let s:in_event = 1
     let profiles = sw#cache_get('profiles')
     let profile = a:args['profile']
-    if has_key(profiles[profile]['props'], 'report') && profiles[profile]['props']['report'] == 'true'
+    if has_key(profiles, profile) && has_key(profiles[profile]['props'], 'report') && profiles[profile]['props']['report'] == 'true'
         call sw#report#get(profile)
     endif
     let s:in_event = 0
