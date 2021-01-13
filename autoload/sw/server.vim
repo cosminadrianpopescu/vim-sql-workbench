@@ -16,7 +16,7 @@
 "  autocomplete based on the current selected database
 "
 "============================================================================"
-
+let s:started = 0
 let s:current_file = expand('<sfile>:p:h')
 let s:nvim = has("nvim")
 let s:channel_handlers = {}
@@ -26,7 +26,8 @@ let s:pattern_wait_input = '\v^([a-zA-Z_][a-zA-Z0-9_]*( \[[^\]]+\])?: |([^\>]+\>
 let s:params_history = []
 let s:pattern_new_connection = '\v^Connection to "([^"]+)" successful$'
 let s:pattern_wbconnect = '\c\v.*wbconnect[ \t\n\r]+-?(#WHAT#)?\=?([ \r\n\t]*)?((["''])([^\4]+)\4|([^ \r\n\t]+)).*$'
-let s:pattern_wbconnect_gen = '\v\c^[ \t\n\r]*wbconnect.*$'
+let s:pattern_wbconnect_1 = '\c\v.*wbconnect[ \t\n\r]+-?(#WHAT#)?\=?([ \r\n\t]*)?(["''])([^\3]+)\3.*$'
+let s:pattern_wbconnect_gen = '\v\c^(-- \@wbresult[^\r\n]*\n)?[ \t\n\r]*wbconnect.*$'
 let s:timer = {'id': -1, 'sec' : 0}
 let s:events = {}
 
@@ -100,11 +101,15 @@ endfunction
 
 function! sw#server#handle_message(channel, msg)
     let channel = sw#find_channel(s:channel_handlers, a:channel)
+    if !has_key(s:channel_handlers, channel)
+      return 
+    endif
     if has_key(s:channel_handlers[channel], 'pid') && s:channel_handlers[channel].pid == ''
         call s:get_channel_pid(channel)
     endif
     call s:log_channel(channel, a:msg)
-    let lines = split(substitute(a:msg, "\r", "", 'g'), "\n")
+    let msg = substitute(a:msg, '\v\c%x1B[^]*', '', 'g')
+    let lines = split(substitute(msg, "\r", "", 'g'), "\n")
     let got_prompt = 0
     let max_length = 0
     let text = ''
@@ -151,7 +156,7 @@ function! sw#server#start_sqlwb(handler, ...)
     if a:0
         let background = a:1
     endif
-    let vid = substitute(v:servername, '\v\/', '-', 'g') . sw#generate_unique_id()
+    let vid = substitute(sw#servername(), '\v\/', '-', 'g') . sw#generate_unique_id()
     let cmd = [g:sw_exe, '-feedback=true', '-showProgress=false', '-showTiming=true', '-nosettings', '-variable=vid=' . vid]
 
     if exists('g:sw_config_dir')
@@ -187,7 +192,7 @@ function! sw#server#start_sqlwb(handler, ...)
     call s:log_init(channel)
 
     call s:trigger_event(channel, 'new_instance', {'channel': channel})
-
+    let s:started = 1
     return channel
 endfunction
 
@@ -207,7 +212,7 @@ function! sw#server#share_connection(buffer)
 endfunction
 
 function! s:get_wbconnect_pattern(what)
-    return substitute(s:pattern_wbconnect, '#WHAT#', a:what, 'g')
+    return substitute(s:pattern_wbconnect_1, '#WHAT#', a:what, 'g')
 endfunction
 
 function! s:try_wbconnect_extract(sql)
@@ -217,12 +222,14 @@ function! s:try_wbconnect_extract(sql)
     let profile = ''
     let group = ''
 
-    if substitute(a:sql, pprofile, '\1', 'g') == ''
-        let group = ''
-        let profile = substitute(a:sql, pprofile, '\6', 'g')
+    if (a:sql =~ pgroup)
+      let group = substitute(a:sql, pgroup, '\4', 'g')
+    endif
+
+    if (a:sql =~ pprofile)
+      let profile = substitute(a:sql, pprofile, '\4', 'g')
     else
-        let profile = substitute(a:sql, pprofile, '\5', 'g')
-        let group = substitute(a:sql, pgroup, '\5', 'g')
+      let profile = substitute(a:sql, '\v\c^.*[ \t\r\n]([^ \t\r\n;]+)[ \t\r\n;]*$', '\1', 'g')
     endif
 
     let _p = '\v;[ \t]*$'
@@ -230,6 +237,9 @@ function! s:try_wbconnect_extract(sql)
 endfunction
 
 function! sw#server#execute_sql(sql, ...)
+    if (!s:started)
+      return
+    endif
     let channel = ''
     if (exists('b:sw_channel'))
         let channel = b:sw_channel
@@ -406,4 +416,8 @@ function! sw#server#add_event(event, listener)
     endif
 
     call add(s:events[a:event], a:listener)
+endfunction
+
+function! sw#server#is_started()
+    return s:started
 endfunction

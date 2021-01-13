@@ -531,7 +531,7 @@ function! sw#get_pattern(which)
 endfunction
 
 function! sw#servername()
-    return substitute(v:servername, '\v\/', '-', 'g')
+    return getpid()
 endfunction
 
 function! sw#trim(s)

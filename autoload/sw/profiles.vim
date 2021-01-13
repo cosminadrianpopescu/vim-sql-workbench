@@ -28,8 +28,10 @@ function! sw#profiles#about(profile, txt)
 
         let output = g:sw_cache . '/macros.vim'
         let inputfile = substitute(inputfile, '\v\cwbprofiles\.xml$', 'WbMacros.xml', 'g')
-        let stylesheet = sw#script_path() . 'resources/macros2vim.xslt'
-        call s:process(stylesheet, inputfile, output)
+        if (filereadable(inputfile))
+          let stylesheet = sw#script_path() . 'resources/macros2vim.xslt'
+          call s:process(stylesheet, inputfile, output)
+        endif
     endif
 endfunction
 
