@@ -8,9 +8,9 @@ let sw_sql_source_triggers = {'title': 'SQL Source', 'shortcut': 'S', 'command':
 let sw_data = {'title': 'Data', 'shortcut': 'D', 'command': 'select * from %object%;', 'filetype': 'sw'}
 let sw_data_filter = {'title': 'Filtered Data', 'shortcut': 'F', 'command': 'select * from %object% where $[?filter];', 'filetype': 'sw'}
 let sw_indexes = {'title': 'Indexes', 'shortcut': 'I', 'command': 'WbListIndexes -tableName=%object%;'}
-let sw_referenced_by = {'title': 'Referenced by', 'shortcut': 'Y', 'command': ':sw#dbexplorer#get_referenced_by'}
 let sw_references = {'title': 'References', 'shortcut': 'R', 'command': ':sw#dbexplorer#get_references'}
-let objects = {'title': 'Objects', 'shortcut': 'O', 'command': 'WbList -objects=% -types=SYNONYM,TABLE,TYPE,VIEW', 'panels': [sw_columns, sw_sql_source, sw_data, sw_data_filter, sw_indexes, sw_referenced_by, sw_references]}
+let sw_usages = {'title': 'Usages', 'shortcut': 'U', 'command': 'wblistdependencies -name=%object% -dependency=using; wblistdependencies -name=%object% -dependency=uses;'}
+let objects = {'title': 'Objects', 'shortcut': 'O', 'command': 'WbList -objects=% -types=SYNONYM,TABLE,TYPE,VIEW', 'panels': [sw_columns, sw_sql_source, sw_data, sw_data_filter, sw_indexes, sw_references, sw_usages]}
 let sw_sql_source = {'title': 'SQL Source', 'shortcut': 'S', 'command': 'WbProcSource %object%', 'filetype': 'sql'}
 let procedures = {'title': 'Procedures', 'shortcut': 'P', 'command': 'WbListProcs;', 'panels': [sw_sql_source]}
 let triggers = {'title': 'Triggers', 'shortcut': 'T', 'command': 'WbListTriggers;', 'panels': [sw_sql_source_triggers]}
@@ -21,7 +21,7 @@ let sw_sql_source = {'title': 'SQL Source', 'shortcut': 'S', 'command': 'WbGener
 let sw_columns = {'title': 'Columns', 'shortcut': 'C', 'command': 'desc %3%.%0%'}
 let sw_data = {'title': 'Data', 'shortcut': 'D', 'command': 'select * from %3%.%0%', 'filetype': 'sw'}
 let sw_indexes = {'title': 'Indexes', 'shortcut': 'I', 'command': 'WbListIndexes -tableName=%object% -schema=%3%'}
-let objects = {'title': 'Objects', 'shortcut': 'O', 'command': 'WbList', 'panels': [sw_columns, sw_sql_source, sw_data, sw_indexes, sw_referenced_by, sw_references]}
+let objects = {'title': 'Objects', 'shortcut': 'O', 'command': 'WbList', 'panels': [sw_columns, sw_sql_source, sw_data, sw_indexes, sw_references, sw_usages]}
 let sw_sql_source_proc = {'title': 'SQL Source', 'shortcut': 'S', 'command': ':sw#dbexplorer#postgre_proc', 'filetype': 'sql'}
 let sw_sql_source_triggers = {'title': 'SQL Source', 'shortcut': 'S', 'command': 'WbGrepSource -searchValues="%object%" -objects=%object% -types=* -useRegex=true -schemas=*;', 'skip_columns': [0, 1], 'hide_header': 1, 'filetype': 'sql'}
 let procedures = {'title': 'Procedures', 'shortcut': 'P', 'command': 'WbListProcs;', 'panels': [sw_sql_source_proc]}
