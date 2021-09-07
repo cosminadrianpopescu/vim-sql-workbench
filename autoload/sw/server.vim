@@ -22,7 +22,7 @@ let s:nvim = has("nvim")
 let s:channel_handlers = {}
 let s:pattern_prompt_begin = '\v^([a-zA-Z_0-9\.]+(\@[a-zA-Z_0-9\/\-]+)*\>[ \s\t]*)+'
 let s:pattern_prompt = s:pattern_prompt_begin . '$'
-let s:pattern_wait_input = '\v^([a-zA-Z_][a-zA-Z0-9_]*( \[[^\]]+\])?: |([^\>]+\> )?([^\>]+\> )*Username|([^\>]+\> )*Password: |([^\>]+\>[ ]+)?Do you want to run the command [A-Z]+\? \(Yes\/No\/All\)[ ]+)$'
+let s:pattern_wait_input = '\v^([a-zA-Z_][a-zA-Z0-9_]*( \[[^\]]+\])?: |([^\>]+\> )?([^\>]+\> )*Username|([^\>]+\> )*Password: |([^\>]+\>[ ]+)?Do you want to run the command [A-Z]+\? \(Yes\/No\/All\)[ ]+|Please enter the master password: )$'
 let s:params_history = []
 let s:pattern_new_connection = '\v^Connection to "([^"]+)" successful$'
 let s:pattern_wbconnect = '\c\v.*wbconnect[ \t\n\r]+-?(#WHAT#)?\=?([ \r\n\t]*)?((["''])([^\4]+)\4|([^ \r\n\t]+)).*$'
@@ -121,7 +121,11 @@ function! sw#server#handle_message(channel, msg)
         endif
         if line =~ s:pattern_wait_input && !(line =~ '\v^Catalog: $') && !(line =~ '\v^Schema: $')
             if s:nvim
-                let value = input('SQL Workbench/J is asking for input for ' . line . ' ', '')
+                if (line =~ '\cmaster password')
+                    let value = inputsecret('Please enter the master password: ' . line . ' ', '')
+                else
+                    let value = input('SQL Workbench/J is asking for input for ' . line . ' ', '')
+                endif
                 call add(s:params_history, {'prompt': line, 'value': value})
                 call jobsend(b:sw_channel, value . "\n")
             else
