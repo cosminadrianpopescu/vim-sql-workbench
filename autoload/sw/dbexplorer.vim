@@ -288,6 +288,7 @@ function! s:process_result_2(result, tab_shortcut, shortcut, cmd)
     call sw#session#set_buffer_variable('last_cmd', a:cmd)
     call sw#session#set_buffer_variable('state', 'resultsets')
     call sw#put_lines_in_buffer(result)
+    call sw#goto_window('__DBExplorer__-' . b:profile)
 endfunction
 
 function! s:get_object_columns()
@@ -640,15 +641,20 @@ endfunction
 function! sw#dbexplorer#get_references(tbl)
     let profile = substitute(b:profile, '___', '\', 'g')
     let tbl = substitute(a:tbl, '\v\c^([^ ]+) .*$', '\1', 'g')
-    let ref = sw#report#get_references(profile, tbl)
-    return s:build_tree(ref, '', 'references', 0)
+    let ref = sw#report#get_references(profile, tbl, -1)
+    let result = 'Tables that the current object references: ' . "\n"
+    let result .= s:build_tree(ref, '', 'references', 0) . "\n\n"
+    let result .= 'Tables that are referenced by the current object' . "\n"
+    let result .= sw#dbexplorer#get_referenced_by(a:tbl)
+
+    return result
 endfunction
 
 " Gets the tree of referenced by
 function! sw#dbexplorer#get_referenced_by(tbl)
     let profile = substitute(b:profile, '___', '\', 'g')
     let tbl = substitute(a:tbl, '\v\c^([^ ]+) .*$', '\1', 'g')
-    let ref = sw#report#get_referenced_by(profile, tbl)
+    let ref = sw#report#get_referenced_by(profile, tbl, -1)
     return s:build_tree(ref, '', 'ref-by', 0)
 endfunction
 

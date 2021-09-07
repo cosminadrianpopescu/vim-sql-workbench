@@ -102,7 +102,7 @@ endfunction
 function! sw#server#handle_message(channel, msg)
     let channel = sw#find_channel(s:channel_handlers, a:channel)
     if !has_key(s:channel_handlers, channel)
-      return 
+        return 
     endif
     if has_key(s:channel_handlers[channel], 'pid') && s:channel_handlers[channel].pid == ''
         call s:get_channel_pid(channel)
