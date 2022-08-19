@@ -504,13 +504,14 @@ function! sw#put_text_in_buffer(text)
 endfunction
 
 function! sw#put_lines_in_buffer(lines)
-    let file = g:sw_tmp . "/row-" . sw#servername()
+    let _x = @x
+    let @x = join(a:lines, "\n")
     setlocal modifiable
     normal ggdG
-    call writefile(a:lines, file)
-    execute "read " . file
-    normal ggdd
+    normal! "xP
+    normal gg
     setlocal nomodifiable
+    let @x = _x
 endfunction
 
 function! sw#get_connect_command(profile)
@@ -617,4 +618,12 @@ function! sw#bufname(which)
     endif
 
     return '__' . bufnr('%') . '__'
+endfunction
+
+function! sw#get_tmp_config_dir()
+    return g:sw_cache . '/tmp-config'
+endfunction
+
+function! sw#get_tmp_config()
+    return sw#get_tmp_config_dir() . '/workbench.settings'
 endfunction

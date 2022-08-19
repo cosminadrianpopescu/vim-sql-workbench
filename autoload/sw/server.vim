@@ -22,14 +22,16 @@ let s:nvim = has("nvim")
 let s:channel_handlers = {}
 let s:pattern_prompt_begin = '\v^([a-zA-Z_0-9\.]+(\@[a-zA-Z_0-9\/\-]+)*\>[ \s\t]*)+'
 let s:pattern_prompt = s:pattern_prompt_begin . '$'
-let s:pattern_wait_input = '\v^([a-zA-Z_][a-zA-Z0-9_]*( \[[^\]]+\])?: |([^\>]+\> )?([^\>]+\> )*Username|([^\>]+\> )*Password: |([^\>]+\>[ ]+)?Do you want to run the command [A-Z]+\? \(Yes\/No\/All\)[ ]+|Please enter the master password: )$'
+let s:pattern_wait_input = '\v^([a-zA-Z_][a-zA-Z0-9_]*( \[[^\]]+\])?: |([^\>]+\> )?([^\>]+\> )*Username|([^\>]+\> )*Password: |([^\>]+\>[ ]+)?Do you want to run the command [A-Z]+\? \(Yes\/No\/All\)[ ]+|Please enter the master password:[ ]?)$'
 let s:params_history = []
 let s:pattern_new_connection = '\v^Connection to "([^"]+)" successful$'
+let s:master_password = ''
 let s:pattern_wbconnect = '\c\v.*wbconnect[ \t\n\r]+-?(#WHAT#)?\=?([ \r\n\t]*)?((["''])([^\4]+)\4|([^ \r\n\t]+)).*$'
 let s:pattern_wbconnect_1 = '\c\v.*wbconnect[ \t\n\r]+-?(#WHAT#)?\=?([ \r\n\t]*)?(["''])([^\3]+)\3.*$'
 let s:pattern_wbconnect_gen = '\v\c^(-- \@wbresult[^\r\n]*\n)?[ \t\n\r]*wbconnect.*$'
 let s:timer = {'id': -1, 'sec' : 0}
 let s:events = {}
+let s:master_password_setting = 'workbench.profiles.masterpassword'
 
 function! sw#server#get_channel_pid(vid, channel, message)
     for handler_item in items(s:channel_handlers)
@@ -93,10 +95,18 @@ function! sw#server#nvim_handle_message(job, lines, ev)
     endif
 endfunction
 
-function! sw#server#prompt_for_value(channel, line, timer_id)
-    let value = input('SQL Workbench/J is asking for input for ' . a:line . ' ', '')
+function! sw#server#prompt_for_value(channel, line, ...)
+    if (a:line =~ '\cmaster password')
+        let value = s:master_password
+    else
+        let value = input('SQL Workbench/J is asking for input for ' . a:line . ' ', '')
+    endif
     call add(s:params_history, {'prompt': a:line, 'value': value})
-    call ch_sendraw(a:channel, value . "\n")
+    if (s:nvim)
+        call jobsend(a:channel, value . "\n")
+    else
+        call ch_sendraw(a:channel, value . "\n")
+    endif
 endfunction
 
 function! sw#server#handle_message(channel, msg)
@@ -111,7 +121,6 @@ function! sw#server#handle_message(channel, msg)
     let msg = substitute(a:msg, '\v\c%x1B[^]*', '', 'g')
     let lines = split(substitute(msg, "\r", "", 'g'), "\n")
     let got_prompt = 0
-    let max_length = 0
     let text = ''
     for line in lines
         let line = substitute(line, '\v^(\.\.\> )*', '', 'g')
@@ -120,19 +129,10 @@ function! sw#server#handle_message(channel, msg)
             let got_prompt = 1
         endif
         if line =~ s:pattern_wait_input && !(line =~ '\v^Catalog: $') && !(line =~ '\v^Schema: $')
-            if s:nvim
-                if (line =~ '\cmaster password')
-                    let value = inputsecret('Please enter the master password: ' . line . ' ', '')
-                else
-                    let value = input('SQL Workbench/J is asking for input for ' . line . ' ', '')
-                endif
-                call add(s:params_history, {'prompt': line, 'value': value})
-                call jobsend(b:sw_channel, value . "\n")
-            else
-                let Func = function('sw#server#prompt_for_value', [channel, line])
-                let got_prompt = 1
-                let timer_id = timer_start(500, Func)
-            endif
+            call sw#server#prompt_for_value(channel, line)
+            " "let Func = function('sw#server#prompt_for_value', [channel, line])
+            " "let timer_id = timer_start(500, Func)
+            break
         endif
 
         if line =~ s:pattern_new_connection && !s:channel_handlers[channel].background
@@ -161,10 +161,19 @@ function! sw#server#start_sqlwb(handler, ...)
         let background = a:1
     endif
     let vid = substitute(sw#servername(), '\v\/', '-', 'g') . sw#generate_unique_id()
-    let cmd = [g:sw_exe, '-feedback=true', '-showProgress=false', '-showTiming=true', '-nosettings', '-variable=vid=' . vid]
+    let cmd = [g:sw_exe, '-feedback=true', '-showProgress=false', '-showTiming=true', '-nosettings', '-variable=vid=' . vid, '-configDir=' . sw#get_tmp_config_dir(), '-profileStorage=' . g:sw_config_dir . '/wb-profiles.properties']
 
-    if exists('g:sw_config_dir')
-        call add(cmd, '-configDir=' . g:sw_config_dir)
+    let settings = ['workbench.console.script.showtime=true', 'workbench.console.terminal.title.change=false', 'workbench.console.use.jline=false']
+    let pass = sw#get_sw_setting(s:master_password_setting)
+
+    if pass != ''
+        call add(settings, s:master_password_setting. '=' . pass)
+    endif
+
+    call writefile(settings, sw#get_tmp_config())
+
+    if s:master_password == '' && pass != ''
+        let s:master_password = inputsecret('Please enter the master password: ', '')
     endif
 
     let valid_exe = 1
@@ -424,4 +433,8 @@ endfunction
 
 function! sw#server#is_started()
     return s:started
+endfunction
+
+function! sw#server#get_master_password()
+    return s:master_password
 endfunction

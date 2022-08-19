@@ -177,7 +177,7 @@ endfunction
 function! sw#sqlwindow#extract_selected_sql(...)
     let use_alternate = a:0 && a:1
     let z_save = @z
-    normal gv"zy
+    normal! gv"zy
     let sql = @z
     let @z = z_save
     let delimiter = s:get_delimiter(use_alternate)

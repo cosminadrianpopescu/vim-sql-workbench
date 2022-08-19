@@ -65,12 +65,23 @@ if !exists('g:sw_search_default_compare_types')
     let g:sw_search_default_compare_types = 'contains'
 endif
 
+let config = $HOME . '/.sqlworkbench/'
+if exists(g:sw_config_dir)
+    let config = g:sw_config_dir
+endif
+
 if !exists('g:sw_cache')
     let g:sw_cache = $HOME . '/.cache/sw'
     if !isdirectory(g:sw_cache)
         call mkdir(g:sw_cache, "p")
     endif
 endif
+
+if !isdirectory(sw#get_tmp_config_dir())
+    call mkdir(sw#get_tmp_config_dir(), 'p')
+endif
+
+call writefile(readfile(config . 'WbDrivers.xml'), g:sw_cache . '/tmp-config/WbDrivers.xml')
 
 if (!exists('g:sw_delimiter'))
     let g:sw_delimiter = ';'
@@ -212,7 +223,7 @@ command! -nargs=1 -complete=buffer SWSqlBufferShareConnection call sw#sqlwindow#
 command! -nargs=* -complete=file SWSqlBufferConnect call sw#sqlwindow#connect_buffer(g:sw_sqlopen_command, <f-args>)
 command! -nargs=* -complete=file SWSqlBufferDisconnect call sw#server#disconnect_buffer()
 command! -bang SWSqlExecuteCurrent call sw#sqlwindow#execute_sql(sw#sqlwindow#extract_current_sql(0, <bang>0))
-command! -bang SWSqlExecuteSelected call sw#sqlwindow#execute_sql(sw#sqlwindow#extract_selected_sql(<bang>0))
+command! -range -bang SWSqlExecuteSelected call sw#sqlwindow#execute_sql(sw#sqlwindow#extract_selected_sql(<bang>0))
 command! SWSqlExecuteAll call sw#sqlwindow#execute_sql(sw#sqlwindow#extract_all_sql())
 command! SWSqlRefreshResultSet call sw#sqlwindow#refresh_resultset()
 command! SWSqlDeleteResultSet call sw#sqlwindow#delete_resultset()

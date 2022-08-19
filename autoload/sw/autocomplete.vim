@@ -265,13 +265,11 @@ endfunction
 
 function! sw#autocomplete#perform(findstart, base)
     " Check that the cache is alright
-    if !exists('b:autocomplete_tables') && !exists('g:sw_autocomplete_default_tables')
-        let tables = sw#autocomplete#get_cache(sw#bufname('%'))
-        if len(tables) > 0
-            let b:autocomplete_tables = tables
-        else
-            return []
-        endif
+    let tables = sw#autocomplete#get_cache(sw#bufname('%'))
+    if len(tables) > 0
+        let b:autocomplete_tables = tables
+    else
+        return []
     endif
 	call sw#session#init_section()
     if (exists('b:sql'))

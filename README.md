@@ -1285,6 +1285,23 @@ and
 * `g:sw_plugin_path`: for `cygwin` environments: specify the plugin
   installation path (for example `c:/Users/cosmin/.vim/bundle/vim-sql-workbench`)
 * `g:sw_prefer_sql_over_macro`: if true, when executing a macro, the plugin
+* `g:sw_ui_input`: if set, it can be a callback to handle the inputs. It
+  should be a function which receives a default value, a title and a callback.
+  Please note that you will need to call the callback if the user accepted the
+  input
+
+  For example:
+
+  ```vimscript
+  let g:sw_ui_input = 'MyUiInput';
+
+  function! MyUiInput(title, def, callback)
+        let x = input(a:title, a:def)
+        if (x) 
+            call a:callback(x)
+        endif
+  endfunction
+  ```
   will send to `SQL Workbench/J` the query behind the macro
 
 DbExt vs VIM SQL Workbench
