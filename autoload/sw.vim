@@ -48,6 +48,7 @@ function! sw#complete_ports(findstart, base, P)
 endfunction
 
 let s:error = 0
+let s:params_history = []
 
 let s:patterns = {'pattern_no_results': '\c\v^\(([0-9]+) rows?\)', 'pattern_empty_line': '\v^[\r \s\t]*$', 'pattern_exec_time': '\v^Execution time: [0-9\.]+', 'pattern_resultset_start': '\v^([\-]+\+?)+([\-]*)-$', 'pattern_desc_titles': '\v^---- .* - (Indexes|Triggers)$'}
 
@@ -626,4 +627,27 @@ endfunction
 
 function! sw#get_tmp_config()
     return sw#get_tmp_config_dir() . '/workbench.settings'
+endfunction
+
+function s:input(channel, line, on_confirm)
+    if a:line =~ '\v\cpassword'
+        let F = function('inputsecret')
+    else
+        let F = function('input')
+    endif
+    let value = F('SQL Workbench/J is asking for input for ' . a:line . ' ', '')
+    call a:on_confirm(a:channel, a:line, value)
+endfunction
+
+function! sw#prompt_for_value(channel, line, on_confirm, ...)
+    if exists('g:sw_input')
+        let F = function(g:sw_input)
+    else 
+        let F = function('s:input')
+    endif
+    call F(a:channel, a:line, a:on_confirm)
+endfunction
+
+function! sw#get_parameters_history()
+    return map(s:params_history, function("s:_do_filter"))
 endfunction

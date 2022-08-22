@@ -20,9 +20,9 @@ let s:started = 0
 let s:current_file = expand('<sfile>:p:h')
 let s:nvim = has("nvim")
 let s:channel_handlers = {}
-let s:pattern_prompt_begin = '\v^([a-zA-Z_0-9\.]+(\@[a-zA-Z_0-9\/\-]+)*\>[ \s\t]*)+'
+let s:pattern_prompt_begin = '\v^([a-zA-Z_0-9\.]+(\@[a-zA-Z_0-9\/\-]+)*)+\>[ \s\t]*'
 let s:pattern_prompt = s:pattern_prompt_begin . '$'
-let s:pattern_wait_input = '\v^([a-zA-Z_][a-zA-Z0-9_]*( \[[^\]]+\])?: |([^\>]+\> )?([^\>]+\> )*Username|([^\>]+\> )*Password: |([^\>]+\>[ ]+)?Do you want to run the command [A-Z]+\? \(Yes\/No\/All\)[ ]+|Please enter the master password:[ ]?)$'
+let s:pattern_wait_input = '\v^([a-zA-Z_][a-zA-Z0-9_]*( \[[^\]]+\])?: |([^\>]+\> )?([^\>]+\> )*Username|([^\>]+\> )*Password: |([^\>]+\>[ ]+)?Do you want to run the command [A-Z]+\? \(Yes\/No\/All\)[ ]+|Please enter the master password:[ ]?|Enter password for:.*)$'
 let s:params_history = []
 let s:pattern_new_connection = '\v^Connection to "([^"]+)" successful$'
 let s:master_password = ''
@@ -32,6 +32,8 @@ let s:pattern_wbconnect_gen = '\v\c^(-- \@wbresult[^\r\n]*\n)?[ \t\n\r]*wbconnec
 let s:timer = {'id': -1, 'sec' : 0}
 let s:events = {}
 let s:master_password_setting = 'workbench.profiles.masterpassword'
+let s:master_password_pattern = 'master password'
+let s:profile_changed = {}
 
 function! sw#server#get_channel_pid(vid, channel, message)
     for handler_item in items(s:channel_handlers)
@@ -95,18 +97,41 @@ function! sw#server#nvim_handle_message(job, lines, ev)
     endif
 endfunction
 
-function! sw#server#prompt_for_value(channel, line, ...)
-    if (a:line =~ '\cmaster password')
-        let value = s:master_password
+function! s:get_param_history(channel, line)
+    for p in s:params_history
+        if p['prompt'] == a:line && (p['profile'] == s:channel_handlers[a:channel].current_profile || a:line =~ s:master_password_pattern)
+            return p
+        endif
+    endfor
+
+    return v:null
+endfunction
+
+function! s:set_param_history(channel, line, value)
+    let p = s:get_param_history(a:channel, a:line)
+    if p is v:null
+        call add(s:params_history, {'prompt': a:line, 'value': a:value, 'profile': s:channel_handlers[a:channel].current_profile})
     else
-        let value = input('SQL Workbench/J is asking for input for ' . a:line . ' ', '')
+        let p['value'] = a:value
     endif
-    call add(s:params_history, {'prompt': a:line, 'value': value})
+endfunction
+
+function s:on_confirm(channel, line, value)
+    call s:set_param_history(a:channel, a:line, a:value)
     if (s:nvim)
-        call jobsend(a:channel, value . "\n")
+        call jobsend(a:channel, a:value . "\n")
     else
-        call ch_sendraw(a:channel, value . "\n")
+        call ch_sendraw(a:channel, a:value . "\n")
     endif
+endfunction
+
+function! sw#server#prompt_for_value(channel, line, ...)
+    let p = s:get_param_history(a:channel, a:line)
+    if !(p is v:null) && s:channel_handlers[a:channel].background
+        call s:on_confirm(a:channel, a:line, p['value'])
+        return
+    endif
+    call sw#prompt_for_value(a:channel, a:line, function('s:on_confirm'))
 endfunction
 
 function! sw#server#handle_message(channel, msg)
@@ -130,13 +155,13 @@ function! sw#server#handle_message(channel, msg)
         endif
         if line =~ s:pattern_wait_input && !(line =~ '\v^Catalog: $') && !(line =~ '\v^Schema: $')
             call sw#server#prompt_for_value(channel, line)
-            " "let Func = function('sw#server#prompt_for_value', [channel, line])
-            " "let timer_id = timer_start(500, Func)
             break
         endif
 
         if line =~ s:pattern_new_connection && !s:channel_handlers[channel].background
             let s:channel_handlers[channel].current_url = substitute(line, s:pattern_new_connection, '\1', 'g')
+            call s:trigger_event(channel, 'profile_changed', s:profile_changed)
+            let s:profile_changed = {}
         endif
     endfor
     let s:channel_handlers[channel].text .= text . "\n"
@@ -171,10 +196,6 @@ function! sw#server#start_sqlwb(handler, ...)
     endif
 
     call writefile(settings, sw#get_tmp_config())
-
-    if s:master_password == '' && pass != ''
-        let s:master_password = inputsecret('Please enter the master password: ', '')
-    endif
 
     let valid_exe = 1
     if !filereadable(g:sw_exe)
@@ -272,7 +293,7 @@ function! sw#server#execute_sql(sql, ...)
             let profile = group . '\' . profile
         endif
 
-        call s:trigger_event(channel, 'profile_changed', {'profile': profile, 'buffer': bufnr('%')})
+        let s:profile_changed = {'profile': profile, 'buffer': bufnr('%')}
 
         let s:channel_handlers[channel].current_profile = profile
     endif
@@ -419,8 +440,17 @@ function! sw#server#tmp()
     return s:channel_handlers
 endfunction
 
+function! s:_do_filter(key, item)
+    let result = {'prompt': a:item['prompt'], 'profile': a:item['profile'], 'value': a:item['value']}
+    if a:item['prompt'] =~ '\v\cpassword'
+        let result['value'] = substitute(result['value'], '\v.', '*', 'g')
+    endif
+
+    return result
+endfunction
+
 function! sw#server#get_parameters_history()
-    return s:params_history
+    return map(s:params_history, function("s:_do_filter"))
 endfunction
 
 function! sw#server#add_event(event, listener)
