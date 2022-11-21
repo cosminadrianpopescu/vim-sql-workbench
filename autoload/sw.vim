@@ -200,20 +200,26 @@ function! sw#execute_sql(command)
 endfunction
 
 " Exports as ods{{{1
-function! sw#export_ods(command)
-    let format = input('Please select a format (text | sqlinsert | sqlupdate | sqldeleteinsert | xml | ods | html | json): ', 'ods')
-    if (format != '')
-        let location = input('Please select a destination file: ', '', 'file')
-        if (location != '')
-            let queries = sw#sql_split(a:command)
-            if len(queries) >= 2
-                let query = queries[1]
-            else
-                let query = queries[0]
-            endif
-            return sw#sqlwindow#execute_sql("WbExport -type=" . format . ' -file=' . location . ';' . query . ';')
-        endif
+function! s:destination_selected(command, format, prompt, location)
+    if a:location == '' || a:location is v:null
+        return 
     endif
+    let queries = sw#sql_split(a:command)
+    if len(queries) >= 2
+        let query = queries[1]
+    else
+        let query = queries[0]
+    endif
+    call sw#sqlwindow#execute_sql("WbExport -type=" . a:format . ' -file=' . a:location . ';' . query . ';')
+endfunction
+function! s:format_selected(command, prompt, format)
+    if a:format == '' || a:format is v:null
+        return 
+    endif
+    call sw#input('Please select a destination file: ', function('s:destination_selected', [a:command, a:format]), 'file', '')
+endfunction
+function! sw#export_ods(command)
+    call sw#select(['text', 'sqlinsert', 'sqlupdate', 'sqldeleteinsert', 'xml', 'ods', 'html', 'json'], 'Please select a format', function('s:format_selected', [a:command]))
 endfunction
 
 " Hides columns from a resultset{{{1
@@ -629,23 +635,47 @@ function! sw#get_tmp_config()
     return sw#get_tmp_config_dir() . '/workbench.settings'
 endfunction
 
-function s:input(channel, line, on_confirm)
-    if a:line =~ '\v\cpassword'
-        let F = function('inputsecret')
+function s:input(prompt, on_confirm, completion, default)
+    if a:completion == ''
+        if a:prompt =~ '\v\cpassword'
+            let F = function('inputsecret')
+        else
+            let F = function('input')
+        endif
+        let value = F('SQL Workbench/J is asking for input for ' . a:prompt . ' ', a:default || '')
     else
-        let F = function('input')
+        let value = input('SQL Workbench/J is asking for input for ' . a:prompt . ' ', a:default || '', a:completion)
     endif
-    let value = F('SQL Workbench/J is asking for input for ' . a:line . ' ', '')
-    call a:on_confirm(a:channel, a:line, value)
+    call a:on_confirm(a:prompt, value)
 endfunction
 
-function! sw#prompt_for_value(channel, line, on_confirm, ...)
+function s:select(options, prompt, on_confirm)
+    let idx = inputlist([a:prompt] + map(a:options, "(v:key + 1) . '. ' . v:val"))
+    if idx >= 1 && idx <= len(a:options)
+        let value = a:options[idx - 1]
+    else
+        let value = ''
+    endif
+    call a:on_confirm(a:prompt, substitute(value, '\v^[0-9]+\. ', '', ''))
+endfunction
+
+function! sw#input(prompt, on_confirm, completion, default)
     if exists('g:sw_input')
         let F = function(g:sw_input)
     else 
         let F = function('s:input')
     endif
-    call F(a:channel, a:line, a:on_confirm)
+    call F(a:prompt, a:on_confirm, a:completion, a:default)
+endfunction
+
+function! sw#select(options, prompt, on_confirm)
+    if exists('g:sw_select')
+        let F = function(g:sw_select)
+    else
+        let F = function('s:select')
+    endif
+
+    call F(a:options, a:prompt, a:on_confirm)
 endfunction
 
 function! sw#get_parameters_history()

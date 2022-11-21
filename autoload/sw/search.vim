@@ -37,7 +37,7 @@ let s:obj_parameters = [{'name': 'searchValues', 'prompt': 'Search terms: ', 'ty
 "    {'name': 'excludeLobs', 'prompt': 'Do you want to exclude lobs? [Y/N] ', 'type': 'boolean', 'default': g:sw_search_default_exclude_lobs}
 "]
 
-let s:data_parameters = [{'name': 'searchValue', 'prompt': 'Search terms: ', 'type': 'string', 'escape': 1, 'highlight': 1}, {'name': 'ignoreCase', 'prompt': 'Ignore case? [Y/N] ', 'type': 'boolean', 'default': g:sw_search_default_ignore_case, 'highlight_case': 1}, {'name': 'compareType', 'prompt': 'Possible values: equals | matches | startsWith | isNull. Compare type: ', 'type': 'select', 'default': g:sw_search_default_compare_types, 'options': ['equals', 'matches', 'startsWith', 'isNull']}, {'name': 'tables', 'prompt': 'Tables list: ', 'type': 'string', 'default': g:sw_search_default_tables}, {'name': 'types', 'prompt': 'Object types: ', 'type': 'string', 'default': g:sw_search_default_data_types, 'escape': 1}, {'name': 'excludeTables', 'prompt': 'Tables to exclude: ', 'type': 'string', 'continue_on_null': 1}, {'name': 'excludeLobs', 'prompt': 'Do you want to exclude lobs? [Y/N] ', 'type': 'boolean', 'default': g:sw_search_default_exclude_lobs}]
+let s:data_parameters = [{'name': 'searchValue', 'prompt': 'Search terms: ', 'type': 'string', 'escape': 1, 'highlight': 1}, {'name': 'ignoreCase', 'prompt': 'Ignore case? [Y/N] ', 'type': 'boolean', 'default': g:sw_search_default_ignore_case, 'highlight_case': 1}, {'name': 'compareType', 'prompt': 'Possible values: contains | equals | matches | startsWith | isNull. Compare type: ', 'type': 'select', 'default': g:sw_search_default_compare_types, 'options': ['containe', 'equals', 'matches', 'startsWith', 'isNull']}, {'name': 'tables', 'prompt': 'Tables list: ', 'type': 'string', 'default': g:sw_search_default_tables}, {'name': 'types', 'prompt': 'Object types: ', 'type': 'string', 'default': g:sw_search_default_data_types, 'escape': 1}, {'name': 'excludeTables', 'prompt': 'Tables to exclude: ', 'type': 'string', 'continue_on_null': 1}, {'name': 'excludeLobs', 'prompt': 'Do you want to exclude lobs? [Y/N] ', 'type': 'boolean', 'default': g:sw_search_default_exclude_lobs}]
 
 function! s:get_resultset_name()
     let uid = ''
@@ -49,24 +49,17 @@ function! s:get_resultset_name()
     return "__SQLResult__-" . uid
 endfunction
 
-function! s:input_boolean(message, default_value)
-    let result = input(a:message, a:default_value)
-    if result == ''
-        return ''
+function! s:input_boolean(callback, prompt, value)
+    if a:value == ''
+        return
     endif
-    while !(result =~ '\v\c^(y|n)$')
-        let result = input(a:message, a:default_value)
-        if result == ''
-            return ''
-        endif
-    endwhile
-    if result =~ '\v\c^y$'
+    if a:value =~ '\v\c^y(es)?$'
         let result = 'true'
     else 
         let result = 'false'
     endif
 
-    return result
+    call a:callback(a:prompt, result)
 endfunction
 
 function! sw#search#input_select_complete(a1, a2, a3)
@@ -80,13 +73,6 @@ function! sw#search#input_select_complete(a1, a2, a3)
             call add(result, option)
         endif
     endfor
-    return result
-endfunction
-
-function! s:input_select(message, default_value, options)
-    call sw#session#set_buffer_variable('complete_options', a:options)
-    let result = input(a:message, a:default_value,'customlist,sw#search#input_select_complete')
-    call sw#session#unset_buffer_variable('complete_options')
     return result
 endfunction
 
@@ -132,66 +118,86 @@ function! sw#search#object_defaults(values)
     call sw#search#do(command)
 endfunction
 
-function! s:get_search_parameters(v)
-    let result = ''
-    echo 'You can cancel at any time by returning an empty response at any question.'
-    for p in a:v
-        let default = ''
-        if has_key(p, 'default')
-            let default = p['default']
-        endif
-        if p['type'] == 'string'
-            let v = input(p['prompt'], default)
-        elseif p['type'] == 'boolean'
-            let v = s:input_boolean(p['prompt'], default)
-        elseif p['type'] == 'select'
-            let v = s:input_select(p['prompt'], default, p['options'])
-        endif
-        let cont = 0
-        if has_key(p, 'continue_on_null')
-            let cont = p['continue_on_null']
-        endif
+function! s:on_search_response(v, idx, callback, result, prompt, value)
+    let p = a:v[a:idx]
+    let cont = 0
+    if has_key(p, 'continue_on_null')
+        let cont = p['continue_on_null']
+    endif
 
-        if has_key(p, 'highlight')
-            call sw#session#set_buffer_variable('highlight', v)
+    if has_key(p, 'highlight')
+        call sw#session#set_buffer_variable('highlight', a:value)
+    endif
+
+    if !cont
+        if a:value == ''
+            call a:callback('')
+            return
         endif
+    endif
 
-        if !cont
-            if v == ''
-                return ''
-            endif
+    if has_key(p, 'highlight_case')
+        if p['highlight_case']
+            call sw#session#set_buffer_variable('highlight_case', '')
+        else
+            call sw#session#set_buffer_variable('highlight_case', '\c')
         endif
+    endif
 
-        if has_key(p, 'highlight_case')
-            if p['highlight_case']
-                call sw#session#set_buffer_variable('highlight_case', '')
-            else
-                call sw#session#set_buffer_variable('highlight_case', '\c')
-            endif
+    let x = a:value
+    if has_key(p, 'escape')
+        if p['escape']
+            let x = '"' . escape(a:value, '"') . '"'
         endif
+    endif
 
-        if has_key(p, 'escape')
-            if p['escape']
-                let v = '"' . escape(v, '"') . '"'
-            endif
-        endif
+    let result = a:result . ' -' . p['name'] . '=' . x
 
-        let result = result . ' -' . p['name'] . '=' . v
-    endfor
+    if a:idx + 1 >= len(a:v)
+        call a:callback(result)
+        return
+    endif
+    call s:get_search_parameters(a:v, a:idx + 1, a:callback, result)
+endfunction
 
-    return result
+function! s:input_select(message, default_value, options, callback)
+    call sw#session#set_buffer_variable('complete_options', a:options)
+    call sw#input(a:message, a:callback, 'customlist,sw#search#input_select_complete', a:default_value)
+endfunction
+
+function! s:get_search_parameters(v, idx, callback, result)
+    ""echo 'You can cancel at any time by returning an empty response at any question.'
+    let default = ''
+    let p = a:v[a:idx]
+    if has_key(p, 'default')
+        let default = p['default']
+    endif
+    let Callback = function('s:on_search_response', [a:v, a:idx, a:callback, a:result])
+    if p['type'] == 'string'
+        call sw#input(p['prompt'], Callback, v:null, default)
+    elseif p['type'] == 'boolean'
+        call sw#select(['Yes', 'No'], p['prompt'], function('s:input_boolean', [Callback]))
+    elseif p['type'] == 'select'
+        call s:input_select(p['prompt'], default, p['options'], Callback)
+    endif
+endfunction
+
+function! s:search_parameters_finished(cmd, result)
+    if (a:cmd == a:result)
+        return 
+    endif
+    call sw#search#do(a:result)
 endfunction
 
 function! sw#search#prepare(cmd, ...)
     if !a:0
+        let Callback = function('s:search_parameters_finished', [a:cmd])
         if a:cmd == 'WbGrepSource'
-            let command = a:cmd . s:get_search_parameters(s:obj_parameters)
+            call s:get_search_parameters(s:obj_parameters, 0, Callback, a:cmd)
         else
-            let command = a:cmd . s:get_search_parameters(s:data_parameters)
+            call s:get_search_parameters(s:data_parameters, 0, Callback, a:cmd)
         endif
-        if command == a:cmd
-            return
-        endif
+        return
     else
         let i = 1
         let command = a:cmd
@@ -232,6 +238,5 @@ function! sw#search#data(...)
     endwhile
 
     let command = command . ")"
-
     execute command
 endfunction

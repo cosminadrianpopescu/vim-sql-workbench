@@ -131,7 +131,7 @@ function! sw#server#prompt_for_value(channel, line, ...)
         call s:on_confirm(a:channel, a:line, p['value'])
         return
     endif
-    call sw#prompt_for_value(a:channel, a:line, function('s:on_confirm'))
+    call sw#input(a:line, function('s:on_confirm', [a:channel]), v:null, '')
 endfunction
 
 function! sw#server#handle_message(channel, msg)
